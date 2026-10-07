@@ -136,9 +136,12 @@ runs:
     - name: "Build container image"
       id: build
       uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+      env:
+        BUILD_CONTEXT: ${{ inputs.build_context }}
+        DOCKERFILE_PATH: ${{ inputs.dockerfile_path }}
       with:
-        context: ${{ inputs.build_context }}
-        file: ${{ inputs.dockerfile_path }}
+        context: ${{ env.BUILD_CONTEXT }}
+        file: ${{ env.DOCKERFILE_PATH }}
         push: ${{ inputs.push == 'true' }}
         # Multi-arch only on the push path; validate-only builds skip the QEMU cost on every PR.
         # provenance:false keeps the pushed index to the two real platforms: the unknown/unknown
