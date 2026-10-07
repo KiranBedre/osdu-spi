@@ -89,7 +89,8 @@ jobs:
             echo "🔍 Checking structural indicators for initialization..."
             if git ls-remote --heads origin | grep -q "refs/heads/fork_upstream" && \
                git ls-remote --heads origin | grep -q "refs/heads/fork_integration" && \
-               ([ -f "pom.xml" ] || [ -n "$(find . -name 'pom.xml' -type f 2>/dev/null)" ]); then
+               ([ -f ".spi/service.yaml" ] || [ -f "pom.xml" ] || \
+                [ -n "$(find . -name 'pom.xml' -type f 2>/dev/null)" ]); then
               INITIALIZED=true
               echo "✅ Initialization detected via structural indicators"
             fi
@@ -110,7 +111,12 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       is_initialized: ${{ steps.check_init.outputs.initialized }}
-      is_java_repo: ${{ steps.check_java.outputs.is_java }}
+      is_java_repo: ${{ steps.check_init.outputs.is_java }}
+      archetype: ${{ steps.check_init.outputs.archetype }}
+      source_path: ${{ steps.check_init.outputs.source_path }}
+      node_version: ${{ steps.check_init.outputs.node_version }}
+      image_context: ${{ steps.check_init.outputs.image_context }}
+      image_dockerfile: ${{ steps.check_init.outputs.image_dockerfile }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
@@ -119,20 +125,44 @@ jobs:
       - name: "Check Repository Initialization"
         id: check_init
         run: |
-          if [ -f "pom.xml" ] || [ -d "src" ]; then
+          set -euo pipefail
+          if [ -f ".spi/service.yaml" ]; then
+            python3 .github/actions/acceptance-resolver/resolve.py \
+              --contract-only --descriptor .spi/service.yaml --report "$RUNNER_TEMP/service.json"
+            archetype=$(jq -r '.service_config.archetype' "$RUNNER_TEMP/service.json")
+            source_path=$(jq -r '.service_config.source_path' "$RUNNER_TEMP/service.json")
+            node_version=$(jq -r '.service_config.node_version' "$RUNNER_TEMP/service.json")
+            image_context=$(jq -r '.service_config.image.context' "$RUNNER_TEMP/service.json")
+            image_dockerfile=$(jq -r '.service_config.image.dockerfile' "$RUNNER_TEMP/service.json")
+          elif [ -f "pom.xml" ] || [ -n "$(find . -name 'pom.xml' -type f)" ]; then
+            archetype=java-maven-azure
+            source_path=.
+            node_version=
+            image_context=.
+            image_dockerfile=build/Dockerfile
+          else
+            archetype=
+            source_path=
+            node_version=
+            image_context=
+            image_dockerfile=
+          fi
+
+          if [ -n "$archetype" ] && [ -d "$source_path" ]; then
             echo "initialized=true" >> $GITHUB_OUTPUT
           else
             echo "initialized=false" >> $GITHUB_OUTPUT
           fi
-
-      - name: "Check if Java Repository"
-        id: check_java
-        run: |
-          if [ -f "pom.xml" ] || [ -n "$(find . -name 'pom.xml' -type f)" ]; then
+          if [ "$archetype" = "java-maven-azure" ]; then
             echo "is_java=true" >> $GITHUB_OUTPUT
           else
             echo "is_java=false" >> $GITHUB_OUTPUT
           fi
+          echo "archetype=$archetype" >> $GITHUB_OUTPUT
+          echo "source_path=$source_path" >> $GITHUB_OUTPUT
+          echo "node_version=$node_version" >> $GITHUB_OUTPUT
+          echo "image_context=$image_context" >> $GITHUB_OUTPUT
+          echo "image_dockerfile=$image_dockerfile" >> $GITHUB_OUTPUT
 
   check-paths:
     name: "Check Paths"
@@ -296,8 +326,42 @@ jobs:
           generate_coverage: ${{ github.event_name == 'pull_request' || github.event_name == 'pull_request_target' }}
           # core is activeByDefault, so a bare profile flag would drop it (ADR-035). Filter-mode
           # fork_upstream builds core only: its azure profile points at fork-owned directories that
-          # exist only after the cascade merge. Mirror-mode fork_upstream carries provider/ (ADR-039).
-          maven_profile: ${{ ((github.base_ref == 'fork_upstream' || github.ref_name == 'fork_upstream') && vars.SYNC_MODE != 'mirror') && 'core' || vars.MAVEN_PROFILE || 'core,azure' }}
+          # exist only after the cascade merge. Verbatim modes carry the complete upstream tree.
+          maven_profile: ${{ ((github.base_ref == 'fork_upstream' || github.ref_name == 'fork_upstream') && (vars.SYNC_MODE == '' || vars.SYNC_MODE == 'filter')) && 'core' || vars.MAVEN_PROFILE || 'core,azure' }}
+
+  node-build:
+    name: "Node Build"
+    needs: [check-initialization, check-repo-state, check-paths]
+    if: |
+      needs.check-repo-state.outputs.is_initialized == 'true' &&
+      needs.check-repo-state.outputs.archetype == 'node-typescript-azure' &&
+      needs.check-paths.outputs.should_run == 'true' &&
+      github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      build_result: ${{ steps.build.outputs.build_result }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: "Restore local actions for sync PRs"
+        if: |
+          github.event_name == 'pull_request_target' &&
+          github.event.pull_request.base.ref == 'fork_upstream' &&
+          startsWith(github.event.pull_request.head.ref, 'sync/')
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          git checkout origin/main -- .github/actions/
+
+      - name: "Run Node Build"
+        id: build
+        uses: ./.github/actions/node-build
+        with:
+          working_directory: ${{ needs.check-repo-state.outputs.source_path }}
+          node_version: ${{ needs.check-repo-state.outputs.node_version }}
 
   docker-build:
     # Validate-only build of both images; the trusted push is docker-push and the required check
@@ -306,11 +370,13 @@ jobs:
     # No pull_request_target lane and no checkout ref: a PR-head ref in a read-only job is a CodeQL
     # cache-poisoning finding in every fork (#164). Sync PRs get their image validated on the cascade PR.
     name: "Docker Build"
-    needs: [check-initialization, check-repo-state, java-build]
+    needs: [check-initialization, check-repo-state, java-build, node-build]
     if: |
-      needs.java-build.outputs.build_result == 'success' &&
+      always() &&
+      (needs.java-build.outputs.build_result == 'success' ||
+       needs.node-build.outputs.build_result == 'success') &&
       github.event_name != 'pull_request_target' &&
-      (vars.SYNC_MODE == 'mirror' ||
+      (vars.SYNC_MODE == 'mirror' || vars.SYNC_MODE == 'passthrough' ||
        (github.base_ref != 'fork_upstream' && github.ref_name != 'fork_upstream'))
     runs-on: ubuntu-latest
     permissions:
@@ -323,6 +389,9 @@ jobs:
         with:
           push: 'false'
           image_name: ${{ vars.SERVICE_NAME || github.event.repository.name }}
+          build_kind: ${{ needs.check-repo-state.outputs.archetype == 'node-typescript-azure' && 'source' || 'maven-jar' }}
+          build_context: ${{ needs.check-repo-state.outputs.image_context }}
+          dockerfile_path: ${{ needs.check-repo-state.outputs.image_dockerfile }}
           # Conventional JAR path; the action auto-discovers the Azure JAR when a deviant module name
           # (e.g. entitlements-v2-azure) does not match. SERVICE_TARGET_JAR forces a path (ADR-037).
           jar_file: ${{ vars.SERVICE_TARGET_JAR || format('provider/{0}-azure/target/*-spring-boot.jar', vars.SERVICE_NAME || github.event.repository.name) }}
@@ -343,11 +412,12 @@ jobs:
 
   docker-push:
     name: "Docker Push"
-    needs: [check-initialization, check-repo-state, java-build, docker-build]
+    needs: [check-initialization, check-repo-state, java-build, node-build, docker-build]
     # Trust boundary (ADR-036): push to GHCR only on trusted events.
     if: |
       (
-        needs.java-build.outputs.build_result == 'success' &&
+        (needs.java-build.outputs.build_result == 'success' ||
+         needs.node-build.outputs.build_result == 'success') &&
         github.actor != 'dependabot[bot]' &&
         github.event_name != 'pull_request_target' &&
         github.event_name != 'workflow_dispatch' &&
@@ -379,6 +449,9 @@ jobs:
         with:
           push: 'true'
           image_name: ${{ vars.SERVICE_NAME || github.event.repository.name }}
+          build_kind: ${{ needs.check-repo-state.outputs.archetype == 'node-typescript-azure' && 'source' || 'maven-jar' }}
+          build_context: ${{ needs.check-repo-state.outputs.image_context }}
+          dockerfile_path: ${{ needs.check-repo-state.outputs.image_dockerfile }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           jar_file: ${{ vars.SERVICE_TARGET_JAR || format('provider/{0}-azure/target/*-spring-boot.jar', vars.SERVICE_NAME || github.event.repository.name) }}
 
@@ -702,15 +775,23 @@ jobs:
               continue
             fi
             suite_dir=$(jq -r .contract.test_dir "$report")
+            suite_entrypoint=$(jq -r .contract.test_entrypoint "$report")
             timeout_min=$(jq -r .contract.timeout_minutes "$report")
-            mapfile -t mvn_args < <(jq -r '.contract.maven_arguments[]' "$report")
+            report_paths=$(jq -c .contract.report_paths "$report")
+            mapfile -t test_args < <(jq -r '.contract.test_arguments[]' "$report")
             # The verdict comes from the report XML copied out before the container goes.
             container="suite-$suite-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
             code=0
-            timeout "${timeout_min}m" docker run --name "$container" --env-file "$suite.env" -e SUITE_DIR="$suite_dir" "$TEST_IMAGE" "${mvn_args[@]}" || code=$?
+            timeout "${timeout_min}m" docker run --name "$container" --env-file "$suite.env" \
+              -e SUITE_DIR="$suite_dir" -e SUITE_ENTRYPOINT="$suite_entrypoint" \
+              "$TEST_IMAGE" "${test_args[@]}" || code=$?
             docker cp "$container:/suite/$suite_dir" "reports/$suite" > /dev/null 2>&1 || mkdir -p "reports/$suite"
             docker rm -f "$container" > /dev/null 2>&1 || true
-            if verdict=$(python3 .github/actions/acceptance-image/suite-verdict.py --exit-code "$code" --reports "reports/$suite"); then
+            verdict_args=(--exit-code "$code" --reports "reports/$suite")
+            if [ "$report_paths" != "[]" ]; then
+              verdict_args+=(--patterns-json "$report_paths")
+            fi
+            if verdict=$(python3 .github/actions/acceptance-image/suite-verdict.py "${verdict_args[@]}"); then
               icon="✅"
             else
               icon="❌"; echo "::error::suite $suite $verdict"; failed="$failed $suite"
@@ -728,9 +809,7 @@ jobs:
         with:
           name: suite-reports
           overwrite: true
-          path: |
-            reports/**/target/surefire-reports/**
-            reports/**/target/failsafe-reports/**
+          path: reports/**/*.xml
           if-no-files-found: ignore
           retention-days: 14
 
@@ -743,7 +822,7 @@ jobs:
 
   code-validation:
     name: "Check Code Quality"
-    needs: [check-initialization, check-repo-state, check-paths, java-build]
+    needs: [check-initialization, check-repo-state, check-paths, java-build, node-build]
     if: |
       always() &&
       needs.check-initialization.outputs.initialized == 'true'
@@ -850,7 +929,7 @@ jobs:
     # wedges the PR, and one table shows what ran, what was skipped, and why. always() bypasses
     # check-initialization's routing, so the lane test is repeated here.
     name: "Validation Summary"
-    needs: [check-initialization, check-repo-state, check-paths, java-build, docker-build, docker-push, deploy-gate, deploy-test, code-validation]
+    needs: [check-initialization, check-repo-state, check-paths, java-build, node-build, docker-build, docker-push, deploy-gate, deploy-test, code-validation]
     if: |
       always() &&
       (github.event_name != 'pull_request' ||
@@ -872,7 +951,7 @@ jobs:
           VERDICTS: ${{ needs.deploy-test.outputs.verdicts }}
           INITIALIZED: ${{ needs.check-initialization.outputs.initialized }}
           BUILD_RELEVANT: ${{ needs.check-paths.outputs.should_run }}
-          JAVA_REPO: ${{ needs.check-repo-state.outputs.is_java_repo }}
+          ARCHETYPE: ${{ needs.check-repo-state.outputs.archetype }}
           EVENT_NAME: ${{ github.event_name }}
           SAME_REPO: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
           ACTOR: ${{ github.actor }}
@@ -885,21 +964,23 @@ jobs:
             echo "| Job | Result | Note |"
             echo "|---|---|---|"
             jq -rn --arg gate "$GATE_REASON" --arg init "$INITIALIZED" --arg relevant "$BUILD_RELEVANT" \
-              --arg java "$JAVA_REPO" --arg event "$EVENT_NAME" --arg same_repo "$SAME_REPO" --arg actor "$ACTOR" \
+              --arg archetype "$ARCHETYPE" --arg event "$EVENT_NAME" --arg same_repo "$SAME_REPO" --arg actor "$ACTOR" \
               --argjson needs "$NEEDS" '
               def names: {
                 "check-initialization": "Check Initialization", "check-repo-state": "Check Repository",
-                "check-paths": "Check Paths", "java-build": "Java Build", "docker-build": "Docker Build",
+                "check-paths": "Check Paths", "java-build": "Java Build", "node-build": "Node Build", "docker-build": "Docker Build",
                 "code-validation": "Check Code Quality", "docker-push": "Docker Push",
                 "deploy-gate": "Deploy Gate", "deploy-test": "Deploy and Test"};
               def icon: {success: "✅", failure: "❌", cancelled: "⚠️", skipped: "⏭️"}[.] // .;
-              def build: . == "java-build" or . == "docker-build" or . == "docker-push";
+              def build: . == "java-build" or . == "node-build" or . == "docker-build" or . == "docker-push";
               def note:
                 if . == "deploy-test" and $gate != "" then $gate
                 elif $needs[.].result != "skipped" then ""
                 elif $init != "true" then "repository not yet initialized"
                 elif build and $relevant == "false" then "only configuration or docs changed"
-                elif build and $java != "true" then "not a Java repository"
+                elif . == "java-build" and $archetype != "java-maven-azure" then "archetype is \($archetype)"
+                elif . == "node-build" and $archetype != "node-typescript-azure" then "archetype is \($archetype)"
+                elif build and $archetype == "" then "service archetype is unavailable"
                 elif build and $event == "pull_request_target" then "sync lane; images validate on the cascade PR"
                 elif . == "docker-push" and $actor == "dependabot[bot]" then "Dependabot validates through dependabot-validation.yml"
                 elif . == "docker-push" and $same_repo != "true" then "pull request from another repository"

@@ -23,6 +23,7 @@
 #
 # Outputs (to GITHUB_OUTPUT):
 #   upstream_repo - validated identifier, empty on failure
+#   sync_mode - filter (default) or passthrough
 #   should_proceed - true/false
 
 set -euo pipefail
@@ -43,6 +44,20 @@ if [ -z "${GITHUB_TOKEN:-}" ]; then
 fi
 
 REPO=$(echo "$COMMENT_BODY" | head -1 | xargs)
+MODE_LINE=$(printf '%s\n' "$COMMENT_BODY" | sed -n '2p' | xargs)
+SYNC_MODE="filter"
+
+if [[ -n "$MODE_LINE" ]]; then
+    if [[ "$MODE_LINE" =~ ^mode:[[:space:]]*(filter|passthrough)$ ]]; then
+        SYNC_MODE="${BASH_REMATCH[1]}"
+    else
+        echo "❌ Invalid mode. The optional second line must be \`mode: filter\` or \`mode: passthrough\`." | gh issue comment "$ISSUE_NUMBER" --body-file -
+        echo "should_proceed=false" >> "${GITHUB_OUTPUT:-/dev/stdout}"
+        echo "upstream_repo=" >> "${GITHUB_OUTPUT:-/dev/stdout}"
+        echo "sync_mode=" >> "${GITHUB_OUTPUT:-/dev/stdout}"
+        exit 0
+    fi
+fi
 
 echo "Processing repository input: $REPO"
 
@@ -51,6 +66,7 @@ if [[ "$REPO" == http* ]]; then
         echo "❌ Invalid GitLab URL format: $REPO" | gh issue comment "$ISSUE_NUMBER" --body-file -
         echo "should_proceed=false" >> "${GITHUB_OUTPUT:-/dev/stdout}"
         echo "upstream_repo=" >> "${GITHUB_OUTPUT:-/dev/stdout}"
+        echo "sync_mode=" >> "${GITHUB_OUTPUT:-/dev/stdout}"
         exit 0
     fi
 else
@@ -58,15 +74,19 @@ else
         echo "❌ Invalid repository format. Expected 'owner/repo' but got '$REPO'" | gh issue comment "$ISSUE_NUMBER" --body-file -
         echo "should_proceed=false" >> "${GITHUB_OUTPUT:-/dev/stdout}"
         echo "upstream_repo=" >> "${GITHUB_OUTPUT:-/dev/stdout}"
+        echo "sync_mode=" >> "${GITHUB_OUTPUT:-/dev/stdout}"
         exit 0
     fi
 fi
 
 echo "upstream_repo=$REPO" >> "${GITHUB_OUTPUT:-/dev/stdout}"
+echo "sync_mode=$SYNC_MODE" >> "${GITHUB_OUTPUT:-/dev/stdout}"
 echo "should_proceed=true" >> "${GITHUB_OUTPUT:-/dev/stdout}"
 
 cat << EOF | gh issue comment "$ISSUE_NUMBER" --body-file -
 ✅ **Repository validated:** \`$REPO\`
+
+**Upstream mode:** \`$SYNC_MODE\`
 
 🔄 **Starting initialization process...**
 

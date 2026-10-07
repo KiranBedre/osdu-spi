@@ -28,12 +28,13 @@
 # so the no-change comparison is skipped and the commit carries the upstream
 # tip as its only parent.
 #
-# SYNC_MODE=mirror (customer tier, ADR-039) takes the upstream tree verbatim:
-# no extraction, no engine, no report. <config_path> is accepted but never
-# read, filter_rev is the literal "mirror", and the report= line is omitted.
+# SYNC_MODE=mirror (customer tier, ADR-039) or passthrough (intact source,
+# ADR-043) takes the upstream tree verbatim: no extraction, no engine, no
+# report. <config_path> is accepted but never read, filter_rev is the mode
+# name, and the report= line is omitted.
 #
 # Writes key=value lines to <out_file>:
-#   filter_rev=<engine version + config hash, or "mirror">
+#   filter_rev=<engine version + config hash, "mirror", or "passthrough">
 #   report=<path to the engine's JSON report>  (omitted in mirror mode)
 #   tree=<generated tree sha>
 #   has_changes=true|false
@@ -51,6 +52,14 @@ UPSTREAM_SHA="$2"
 CONFIG="$3"
 OUT="$4"
 MODE="${SYNC_MODE:-filter}"
+
+case "$MODE" in
+  filter|mirror|passthrough) ;;
+  *)
+    echo "generate-branch: unsupported SYNC_MODE '$MODE'" >&2
+    exit 2
+    ;;
+esac
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 if [ -n "${RUNNER_TEMP:-}" ]; then
@@ -71,11 +80,11 @@ REPORT="$WORKDIR/upstream-filter-report.json"
 rm -rf "$GEN" "$SCRATCH"
 mkdir -p "$GEN"
 
-if [ "$MODE" = "mirror" ]; then
+if [ "$MODE" != "filter" ]; then
   # The upstream tip is the finished product. Remove any report left by a
   # prior filter run so failure handlers never read stale halt data.
   rm -f "$REPORT"
-  FILTER_REV="mirror"
+  FILTER_REV="$MODE"
   TREE=$(git rev-parse "${UPSTREAM_SHA}^{tree}")
 else
   # git archive would honor export-ignore/export-subst attributes from the
@@ -98,7 +107,7 @@ fi
 
 {
   echo "filter_rev=$FILTER_REV"
-  if [ "$MODE" != "mirror" ]; then
+  if [ "$MODE" = "filter" ]; then
     echo "report=$REPORT"
   fi
   echo "tree=$TREE"
@@ -114,8 +123,8 @@ if [ -n "$BASE_SHA" ]; then
   PARENTS+=(-p "$BASE_SHA")
 fi
 PARENTS+=(-p "$UPSTREAM_SHA")
-if [ "$MODE" = "mirror" ]; then
-  MSG="chore: mirror upstream tree"
+if [ "$MODE" != "filter" ]; then
+  MSG="chore: $MODE upstream tree"
 else
   MSG="chore: generate filtered upstream tree"
 fi

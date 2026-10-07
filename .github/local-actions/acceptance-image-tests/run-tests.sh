@@ -28,6 +28,8 @@ RESOLVE_SUITE="$HERE/../../actions/acceptance-image/resolve-suite.sh"
 RESOLVER="$HERE/../../actions/acceptance-resolver/resolve.py"
 DOCKERFILE="$HERE/../../../build/acceptance.Dockerfile"
 ENTRYPOINT="$HERE/../../../build/acceptance-entrypoint.sh"
+SCRIPT_DOCKERFILE="$HERE/../../../build/script-acceptance.Dockerfile"
+SCRIPT_ENTRYPOINT="$HERE/../../../build/script-acceptance-entrypoint.js"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -94,6 +96,37 @@ RC=0
 resolve_suite "$WS2B" "$TMP/out2c.txt" SERVICE_NAME=demo >/dev/null 2>&1 || RC=$?
 [ "$RC" -eq 2 ] || die "a declared suite that is absent must exit 2, got $RC"
 ok "named suites resolved"
+
+note "script descriptor: type and Node runtime metadata reach the image action"
+WS2C="$TMP/ws-script"
+mkdir -p "$WS2C/.spi" "$WS2C/app/service/tests"
+cat > "$WS2C/.spi/service.yaml" <<'EOF'
+schemaVersion: 4
+service:
+  name: demo
+  archetype: node-typescript-azure
+  sourcePath: app/service
+  nodeVersion: "22"
+  image:
+    context: app/service
+    dockerfile: app/service/Dockerfile
+tests:
+  acceptance:
+    type: script
+    path: app/service
+    entrypoint: tests/run.sh
+    reportPaths: ["results/*.xml"]
+EOF
+resolve_suite "$WS2C" "$TMP/out2c-script.txt" SERVICE_NAME=demo >/dev/null
+[ "$(output_value "$TMP/out2c-script.txt" test_type)" = "script" ] || die "script type not exported"
+[ "$(output_value "$TMP/out2c-script.txt" node_version)" = "22" ] || die "Node version not exported"
+[ "$(output_value "$TMP/out2c-script.txt" buildable)" = "true" ] || die "script suite must be buildable"
+sed 's/nodeVersion: "22"/nodeVersion: "20"/' "$WS2C/.spi/service.yaml" > "$TMP/node20.yaml"
+mv "$TMP/node20.yaml" "$WS2C/.spi/service.yaml"
+RC=0
+resolve_suite "$WS2C" "$TMP/out2c-node20.txt" SERVICE_NAME=demo >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 2 ] || die "an unsupported script-suite Node version must halt"
+ok "script suite metadata resolved"
 
 note "clean skip: an absent suite directory is not an error"
 WS3="$TMP/ws-absent"
@@ -176,6 +209,47 @@ SUITE_DIR=nope PATH="$IMG/bin:$PATH" "$IMG/entrypoint.sh" verify >/dev/null 2>&1
 [ "$RC" -eq 2 ] || die "an unbaked SUITE_DIR must exit 2, got $RC"
 ok "entrypoint suite selection"
 
+note "script entrypoint: expands declared env placeholders without shell evaluation"
+SCRIPT_IMG="$TMP/script-image"
+mkdir -p "$SCRIPT_IMG/suite/app/service/tests"
+printf 'app/service' > "$SCRIPT_IMG/suite/.default-suite-dir"
+cat > "$SCRIPT_IMG/suite/app/service/tests/run.sh" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$@"
+EOF
+chmod +x "$SCRIPT_IMG/suite/app/service/tests/run.sh"
+OUT="$(SUITE_ROOT="$SCRIPT_IMG/suite" SUITE_ENTRYPOINT=tests/run.sh URL='https://example.test/a b' \
+  node "$SCRIPT_ENTRYPOINT" '--url' '${URL}' 'literal;not-shell')"
+EXPECTED=$'--url\nhttps://example.test/a b\nliteral;not-shell'
+[[ "$OUT" == "$EXPECTED" ]] || die "script argv expansion changed token boundaries: $OUT"
+RC=0
+SUITE_ROOT="$SCRIPT_IMG/suite" SUITE_ENTRYPOINT=tests/run.sh \
+  node "$SCRIPT_ENTRYPOINT" '${MISSING}' >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 2 ] || die "an unresolved script argument must exit 2"
+RC=0
+SUITE_ROOT="$SCRIPT_IMG/suite" SUITE_ENTRYPOINT=tests/run.sh URL=value \
+  node "$SCRIPT_ENTRYPOINT" '--url=${URL}' >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 2 ] || die "an embedded environment placeholder must exit 2"
+RC=0
+SUITE_ROOT="$SCRIPT_IMG/suite" SUITE_DIR=../escape SUITE_ENTRYPOINT=run.sh \
+  node "$SCRIPT_ENTRYPOINT" >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 2 ] || die "an escaping script suite path must exit 2"
+ln -s /bin/echo "$SCRIPT_IMG/suite/app/service/tests/outside"
+RC=0
+SUITE_ROOT="$SCRIPT_IMG/suite" SUITE_ENTRYPOINT=tests/outside \
+  node "$SCRIPT_ENTRYPOINT" >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 2 ] || die "an escaping entrypoint symlink must exit 2"
+ok "script entrypoint keeps argv data-only"
+
+note "script Dockerfile: only declared suites are copied and locked dependencies are installed"
+grep -q '^ARG SUITE_DIRS$' "$SCRIPT_DOCKERFILE" || die "script image SUITE_DIRS build arg missing"
+grep -q ' AS select$' "$SCRIPT_DOCKERFILE" || die "script image select stage missing"
+grep -q 'npm --prefix "/suite/$dir" ci' "$SCRIPT_DOCKERFILE" || die "script image must preinstall locked dependencies"
+grep -q 'script-acceptance-entrypoint.js' "$SCRIPT_DOCKERFILE" || die "script entrypoint not baked"
+grep -q '^USER node$' "$SCRIPT_DOCKERFILE" || die "script image must not run suites as root"
+grep -q "test_type == 'script'" "$HERE/../../actions/acceptance-image/action.yml" || die "action does not select the script Dockerfile"
+ok "script Dockerfile contract"
+
 note "verdict: reports decide, not the exit code or the console"
 VERDICT="$HERE/../../actions/acceptance-image/suite-verdict.py"
 report() {  # dir tests skipped failures errors
@@ -205,6 +279,10 @@ OUT="$(verdict 124 "$V/nonzero" || true)"
 [[ "$OUT" == FAIL:*"timed out"* ]] || die "exit 124 must read as a timeout: $OUT"
 mkdir -p "$V/stray/target/other"; report "$V/stray/target/other" 9 0 0 0
 verdict 0 "$V/stray" >/dev/null && die "TEST-*.xml outside a surefire or failsafe dir must not count"
+mkdir -p "$V/script/results"; report "$V/script/results" 4 1 0 0
+OUT="$(python3 "$VERDICT" --exit-code 0 --reports "$V/script" --patterns-json '["results/*.xml"]')" \
+  || die "custom JUnit report glob must pass: $OUT"
+[[ "$OUT" == "pass: 3 tests, 1 skipped" ]] || die "custom report verdict wrong: $OUT"
 ok "suite verdict"
 
 note "build context: the sidecar ignore file overrides the upstream .dockerignore"

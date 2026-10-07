@@ -20,12 +20,14 @@ Safely validates untrusted user input for upstream repository format. Prevents c
 
 ## Behavior
 
-- Extracts first line from comment and trims whitespace
+- Extracts the repository from the first line and an optional
+  `mode: passthrough` from the second line
 - Validates GitHub format: `owner/repo` (alphanumeric, dash, dot, underscore)
 - Validates GitLab format: Full URL with protocol
 - Posts error comment on issue if validation fails
 - Posts confirmation comment if validation succeeds
-- Outputs: `upstream_repo` (validated string), `should_proceed` (true/false)
+- Outputs: `upstream_repo` (validated string), `sync_mode` (`filter` or
+  `passthrough`), `should_proceed` (true/false)
 
 ## Security
 

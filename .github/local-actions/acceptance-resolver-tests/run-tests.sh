@@ -444,6 +444,9 @@ expect_fail "reserved prefix RESOLVER_" 2 "RESOLVER_MODE" "RESERVED_ENV_NAME" \
 variant "$TMP/reserved5.yaml" "VENDOR: {" "USER: {"
 expect_fail "reserved ambient name USER" 2 "USER" "RESERVED_ENV_NAME" \
   engine --mode bind --descriptor "$TMP/reserved5.yaml" --facts "$FACTS" --env-file "$TMP/x.env"
+variant "$TMP/reserved6.yaml" "CLIENT_TENANT" "SUITE_ENTRYPOINT"
+expect_fail "reserved prefix SUITE_" 2 "SUITE_ENTRYPOINT" "RESERVED_ENV_NAME" \
+  engine --mode bind --descriptor "$TMP/reserved6.yaml" --facts "$FACTS" --env-file "$TMP/x.env"
 
 note "halt: a tab anywhere in a line is rejected, not only in the indent"
 variant "$TMP/tab-value.yaml" "path: demo-acceptance-test" $'path:\tdemo-acceptance-test'
@@ -526,6 +529,8 @@ engine --contract-only --descriptor "$TWO" --report "$TMP/suite-default.json" >/
 [ "$(report_field "$TMP/suite-default.json" "r['contract']['suite']")" = "acceptance" ] || die "default suite is acceptance"
 [ "$(report_field "$TMP/suite-default.json" "r['contract']['suites']")" = "{'acceptance': 'demo-acceptance-test', 'integration': 'testing'}" ] \
   || die "contract must list every suite path"
+[ "$(report_field "$TMP/suite-default.json" "r['contract']['suite_types']")" = "{'acceptance': 'maven', 'integration': 'maven'}" ] \
+  || die "contract must list every suite type"
 engine --contract-only --suite integration --descriptor "$TWO" --report "$TMP/suite-int.json" >/dev/null 2>&1 \
   || die "--suite integration must resolve"
 [ "$(report_field "$TMP/suite-int.json" "r['contract']['test_dir']")" = "testing" ] || die "selected suite test_dir wrong"
@@ -542,6 +547,45 @@ sed 's/^  integration:/  Integration:/' "$TWO" > "$TMP/bad-suite-name.yaml"
 expect_fail "suite names are lowercase slugs" 2 "suite names are lowercase slugs" "DESCRIPTOR_INVALID" \
   engine --contract-only --descriptor "$TMP/bad-suite-name.yaml"
 ok "named suites"
+
+note "schema v4: Node service metadata and argv-safe script suite"
+NODE="$TMP/node-service.yaml"
+cp "$FIXTURES/node-service.yaml" "$NODE"
+engine --contract-only --descriptor "$NODE" --report "$TMP/node.json" >/dev/null 2>&1 \
+  || die "schema v4 Node descriptor must validate"
+[ "$(report_field "$TMP/node.json" "r['service_config']['archetype']")" = "node-typescript-azure" ] \
+  || die "Node archetype missing from report"
+[ "$(report_field "$TMP/node.json" "r['service_config']['source_path']")" = "app/sdms" ] \
+  || die "Node source path missing from report"
+[ "$(report_field "$TMP/node.json" "r['service_config']['node_version']")" = "22" ] \
+  || die "Node version missing from report"
+[ "$(report_field "$TMP/node.json" "r['service_config']['image']['dockerfile']")" = "app/sdms/devops/azure/runtime.Dockerfile" ] \
+  || die "Node Dockerfile missing from report"
+[ "$(report_field "$TMP/node.json" "r['contract']['test_type']")" = "script" ] \
+  || die "script type missing from contract"
+[ "$(report_field "$TMP/node.json" "r['contract']['test_entrypoint']")" = "tests/e2e/run_e2e_tests.sh" ] \
+  || die "script entrypoint missing from contract"
+python3 -c 'import json,sys; assert json.load(open(sys.argv[1]))["contract"]["test_arguments"] == ["--seistore-svc-url", "${SVC_URL}", "--user-idtoken", "${STOKEN}"]' "$TMP/node.json" \
+  || die "script argv tokens missing from contract"
+[ "$(report_field "$TMP/node.json" "r['contract']['report_paths']")" = "['tests/e2e/results/*.xml']" ] \
+  || die "script report globs missing from contract"
+
+sed 's/schemaVersion: 4/schemaVersion: 3/' "$NODE" > "$TMP/node-v3.yaml"
+expect_fail "schema v3 refuses the Node archetype" 2 "must be java-maven-azure in schemaVersion 3" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/node-v3.yaml"
+sed '/    reportPaths:/,+1d' "$NODE" > "$TMP/node-no-reports.yaml"
+expect_fail "script suites require JUnit report globs" 2 "reportPaths is required for script suites" "MISSING_KEY" \
+  engine --contract-only --descriptor "$TMP/node-no-reports.yaml"
+sed 's#tests/e2e/run_e2e_tests.sh#tests/../run.sh#' "$NODE" > "$TMP/node-escape.yaml"
+expect_fail "script entrypoints stay inside the suite" 2 "entrypoint must stay inside the suite directory" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/node-escape.yaml"
+sed 's/${STOKEN}/${UNDECLARED}/' "$NODE" > "$TMP/node-undeclared-argument.yaml"
+expect_fail "script arguments reference declared bindings" 2 "references undeclared binding 'UNDECLARED'" "TEMPLATE_REF" \
+  engine --contract-only --descriptor "$TMP/node-undeclared-argument.yaml"
+sed 's/"${SVC_URL}"/"--url=${SVC_URL}"/' "$NODE" > "$TMP/node-embedded-argument.yaml"
+expect_fail "script placeholders occupy a complete argv token" 2 "entire argv token" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/node-embedded-argument.yaml"
+ok "schema v4 Node and script contract"
 
 note "token: the caller's bearer arrives as RESOLVER_TOKEN, never as a default"
 variant "$TMP/token.yaml" "TESTER_TOKEN: { source: user }" "TESTER_TOKEN: { source: token }"
@@ -605,11 +649,12 @@ json.dump(facts, open('$TMP/facts-v2.json', 'w'))
 expect_fail "facts apiVersion" 4 "spi.osdu.dev/v2" "FACTS_API_VERSION" \
   engine --mode bind --descriptor "$DESCRIPTOR" --facts "$TMP/facts-v2.json" --env-file "$TMP/x.env"
 
-note "schema file: published contract parses and pins version 3"
+note "schema file: published contract parses and advertises versions 3 and 4"
 python3 -c "
 import json
 schema = json.load(open('$SCHEMA'))
-assert schema['properties']['schemaVersion']['const'] == 3
+assert schema['properties']['schemaVersion']['enum'] == [3, 4]
+assert schema['properties']['service']['properties']['archetype']['enum'] == ['java-maven-azure', 'node-typescript-azure']
 assert 'keyvault:' in schema['\$defs']['binding']['properties']['source']['pattern']
 "
 ok "service-descriptor.schema.json consistent"

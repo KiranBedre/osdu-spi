@@ -295,18 +295,26 @@ jobs:
         env:
           SYNC_MODE: ${{ vars.SYNC_MODE }}
         run: |
-          # In mirror mode (ADR-039) the config describes the upstream repository, not this
-          # fork: there is no ownership split, and a stamp rewrite would permanently diverge
-          # upstream-owned pom lines. Both dependent steps stay off regardless of file presence.
-          if [ "${SYNC_MODE:-}" = "mirror" ]; then
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "Mirror mode - skipping fork-owned path assertion and pom stamp"
-          elif [ -f ".github/upstream-filter.yml" ]; then
-            echo "exists=true" >> $GITHUB_OUTPUT
-          else
-            echo "exists=false" >> $GITHUB_OUTPUT
-            echo "No .github/upstream-filter.yml - skipping fork-owned path assertion and stamp"
-          fi
+          # Verbatim modes have no provider/core ownership split. A stamp rewrite would
+          # permanently diverge upstream-owned pom lines, so both dependent steps stay off.
+          case "${SYNC_MODE:-filter}" in
+            mirror|passthrough)
+              echo "exists=false" >> $GITHUB_OUTPUT
+              echo "${SYNC_MODE} mode - skipping fork-owned path assertion and pom stamp"
+              ;;
+            filter)
+              if [ -f ".github/upstream-filter.yml" ]; then
+                echo "exists=true" >> $GITHUB_OUTPUT
+              else
+                echo "exists=false" >> $GITHUB_OUTPUT
+                echo "No .github/upstream-filter.yml - skipping fork-owned path assertion and stamp"
+              fi
+              ;;
+            *)
+              echo "::error::Unsupported SYNC_MODE '${SYNC_MODE}'"
+              exit 2
+              ;;
+          esac
 
       - name: Assert fork-owned paths survived the merge
         if: steps.filter-config.outputs.exists == 'true'

@@ -37,32 +37,45 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       initialized: ${{ steps.check_init.outputs.initialized }}
-      is_java_project: ${{ steps.check_java.outputs.is_java }}
+      archetype: ${{ steps.check_init.outputs.archetype }}
+      source_path: ${{ steps.check_init.outputs.source_path }}
+      node_version: ${{ steps.check_init.outputs.node_version }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         
       - name: "Check Repository Initialization"
         id: check_init
         run: |
-          if [ -f "pom.xml" ] || [ -d "src" ]; then
+          set -euo pipefail
+          if [ -f ".spi/service.yaml" ]; then
+            python3 .github/actions/acceptance-resolver/resolve.py \
+              --contract-only --descriptor .spi/service.yaml --report "$RUNNER_TEMP/service.json"
+            archetype=$(jq -r '.service_config.archetype' "$RUNNER_TEMP/service.json")
+            source_path=$(jq -r '.service_config.source_path' "$RUNNER_TEMP/service.json")
+            node_version=$(jq -r '.service_config.node_version' "$RUNNER_TEMP/service.json")
+          elif [ -f "pom.xml" ] || [ -n "$(find . -name 'pom.xml' -type f)" ]; then
+            archetype=java-maven-azure
+            source_path=.
+            node_version=
+          else
+            archetype=
+            source_path=
+            node_version=
+          fi
+
+          if [ -n "$archetype" ] && [ -d "$source_path" ]; then
             echo "initialized=true" >> $GITHUB_OUTPUT
           else
             echo "initialized=false" >> $GITHUB_OUTPUT
           fi
-
-      - name: "Check if Java Project"
-        id: check_java
-        run: |
-          if [ -f "pom.xml" ] || [ -n "$(find . -name 'pom.xml' -type f)" ]; then
-            echo "is_java=true" >> $GITHUB_OUTPUT
-          else
-            echo "is_java=false" >> $GITHUB_OUTPUT
-          fi
+          echo "archetype=$archetype" >> $GITHUB_OUTPUT
+          echo "source_path=$source_path" >> $GITHUB_OUTPUT
+          echo "node_version=$node_version" >> $GITHUB_OUTPUT
 
   java-build:
     name: "Java Build"
     needs: check-repo-state
-    if: needs.check-repo-state.outputs.initialized == 'true' && needs.check-repo-state.outputs.is_java_project == 'true'
+    if: needs.check-repo-state.outputs.initialized == 'true' && needs.check-repo-state.outputs.archetype == 'java-maven-azure'
     runs-on: ubuntu-latest
     outputs:
       is_java_project: ${{ steps.build.outputs.is_java_project }}
@@ -74,10 +87,27 @@ jobs:
         id: build
         uses: ./.github/actions/java-build
 
+  node-build:
+    name: "Node Build"
+    needs: check-repo-state
+    if: needs.check-repo-state.outputs.initialized == 'true' && needs.check-repo-state.outputs.archetype == 'node-typescript-azure'
+    runs-on: ubuntu-latest
+    outputs:
+      build_result: ${{ steps.build.outputs.build_result }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: "Run Node Build"
+        id: build
+        uses: ./.github/actions/node-build
+        with:
+          working_directory: ${{ needs.check-repo-state.outputs.source_path }}
+          node_version: ${{ needs.check-repo-state.outputs.node_version }}
+
   code-coverage:
     name: "📊 Code Coverage"
     needs: [check-repo-state, java-build]
-    if: needs.check-repo-state.outputs.is_java_project == 'true'
+    if: needs.check-repo-state.outputs.archetype == 'java-maven-azure'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1

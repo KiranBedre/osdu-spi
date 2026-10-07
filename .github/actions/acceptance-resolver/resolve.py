@@ -15,7 +15,7 @@
 
 """Acceptance resolver engine.
 
-Joins the fork-owned service descriptor (.spi/service.yaml, schema v3) with
+Joins the fork-owned service descriptor (.spi/service.yaml, schema v3 or v4) with
 the stack's facts envelope (spi info --json, apiVersion spi.osdu.dev/v1) and
 caller-supplied Key Vault secret values into the environment map an acceptance
 suite runs with.
@@ -38,7 +38,7 @@ import os
 import re
 import sys
 
-ENGINE_VERSION = "1.1.0"
+ENGINE_VERSION = "1.2.0"
 REPORT_SCHEMA = 1
 
 FACTS_API_VERSION = "spi.osdu.dev/v1"
@@ -49,7 +49,10 @@ GROUP_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._@-]{0,254}$")
 SECRET_NAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9-]{0,126}$")
 SUFFIX_RE = re.compile(r"^[A-Za-z0-9._~:/@+-]{1,200}$")
 MAVEN_ARG_RE = re.compile(r"^[^\s\x00-\x1f\x7f]{1,240}$")
+ARGV_TOKEN_RE = re.compile(r"^[^\x00-\x1f\x7f]{1,240}$")
 PATH_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,119}$")
+NODE_VERSION_RE = re.compile(r"^[0-9]{1,2}(?:\.[0-9]{1,2}){0,2}$")
+REPORT_PATH_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/*?{}\[\]-]{0,199}$")
 TEMPLATE_REF_RE = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]{0,127})\}")
 KEYVAULT_SOURCE_RE = re.compile(r"^keyvault:([A-Za-z0-9][A-Za-z0-9-]{0,126})$")
 
@@ -113,7 +116,14 @@ RESERVED_ENV_NAMES = frozenset({
     "TZ",
     "USER",
 })
-RESERVED_ENV_PREFIXES = ("ACTIONS_", "GITHUB_", "RESOLVER_", "RUNNER_", "SPI_STACK_")
+RESERVED_ENV_PREFIXES = (
+    "ACTIONS_",
+    "GITHUB_",
+    "RESOLVER_",
+    "RUNNER_",
+    "SPI_STACK_",
+    "SUITE_",
+)
 
 
 class Halt(Exception):
@@ -398,26 +408,39 @@ def validate_descriptor(data, suite="acceptance"):
     _require_keys(data, ("schemaVersion", "service", "tests"),
                   ("schemaVersion", "service", "tests"), "descriptor")
     version = data["schemaVersion"]
-    if version != 3:
+    if version not in (3, 4):
         raise Halt("UNSUPPORTED_SCHEMA_VERSION",
-                   f"descriptor.schemaVersion {version!r} is not supported; this engine reads 3")
+                   f"descriptor.schemaVersion {version!r} is not supported; "
+                   "this engine reads 3 and 4")
 
     service = data["service"]
     if not isinstance(service, dict):
         raise Halt("DESCRIPTOR_INVALID", "descriptor.service must be a mapping")
-    _require_keys(service, ("name", "archetype", "description"), ("name", "archetype"),
-                  "descriptor.service")
+    _require_keys(
+        service,
+        ("name", "archetype", "description", "sourcePath", "nodeVersion", "image"),
+        ("name", "archetype"),
+        "descriptor.service",
+    )
     _string_field(service, "name", "descriptor.service", SLUG_RE)
     archetype = _string_field(service, "archetype", "descriptor.service")
-    if archetype != "java-maven-azure":
+    if version == 3 and archetype != "java-maven-azure":
         raise Halt("DESCRIPTOR_INVALID",
-                   "descriptor.service.archetype must be java-maven-azure")
+                   "descriptor.service.archetype must be java-maven-azure in schemaVersion 3")
+    if archetype not in ("java-maven-azure", "node-typescript-azure"):
+        raise Halt("DESCRIPTOR_INVALID",
+                   "descriptor.service.archetype must be java-maven-azure "
+                   "or node-typescript-azure")
+    if archetype == "node-typescript-azure" and version != 4:
+        raise Halt("DESCRIPTOR_INVALID",
+                   "node-typescript-azure requires schemaVersion 4")
     if "description" in service:
         description = _string_field(service, "description", "descriptor.service")
         if len(description) > 200:
             raise Halt("DESCRIPTOR_INVALID",
                        "descriptor.service.description exceeds 200 characters, "
                        "the published schema maximum")
+    service_config = _validate_service_config(service, archetype)
 
     tests = data["tests"]
     if not isinstance(tests, dict):
@@ -429,7 +452,8 @@ def validate_descriptor(data, suite="acceptance"):
         if not SUITE_NAME_RE.fullmatch(suite_name):
             raise Halt("DESCRIPTOR_INVALID",
                        f"descriptor.tests.{suite_name}: suite names are lowercase slugs")
-        suites[suite_name] = _validate_suite(service["name"], suite_name, tests[suite_name])
+        suites[suite_name] = _validate_suite(
+            service["name"], suite_name, tests[suite_name], version)
     if suite not in suites:
         raise Halt("DESCRIPTOR_INVALID",
                    f"descriptor.tests declares no suite named '{suite}'; "
@@ -437,34 +461,129 @@ def validate_descriptor(data, suite="acceptance"):
     contract = dict(suites[suite])
     contract["suite"] = suite
     contract["suites"] = {name: suites[name]["test_dir"] for name in sorted(suites)}
+    contract["suite_types"] = {
+        name: suites[name]["test_type"] for name in sorted(suites)
+    }
+    contract["service_config"] = service_config
     return contract
 
 
-def _validate_suite(service_name, suite_name, acceptance):
+def _validate_service_config(service, archetype):
+    if archetype == "java-maven-azure":
+        for key in ("sourcePath", "nodeVersion", "image"):
+            if key in service:
+                raise Halt("DESCRIPTOR_INVALID",
+                           f"descriptor.service.{key} is only valid for "
+                           "node-typescript-azure")
+        return {
+            "name": service["name"],
+            "archetype": archetype,
+            "source_path": ".",
+            "node_version": "",
+            "image": {
+                "context": ".",
+                "dockerfile": "build/Dockerfile",
+            },
+        }
+
+    where = "descriptor.service"
+    for key in ("sourcePath", "nodeVersion", "image"):
+        if key not in service:
+            raise Halt("MISSING_KEY", f"{where}.{key} is required for {archetype}")
+    source_path = _string_field(service, "sourcePath", where, PATH_RE)
+    if ".." in source_path.split("/"):
+        raise Halt("DESCRIPTOR_INVALID", f"{where}.sourcePath must stay inside the repository")
+    node_version = _string_field(service, "nodeVersion", where, NODE_VERSION_RE)
+    image = service["image"]
+    if not isinstance(image, dict):
+        raise Halt("DESCRIPTOR_INVALID", f"{where}.image must be a mapping")
+    _require_keys(image, ("context", "dockerfile"), ("context", "dockerfile"),
+                  f"{where}.image")
+    context = _string_field(image, "context", f"{where}.image", PATH_RE)
+    dockerfile = _string_field(image, "dockerfile", f"{where}.image", PATH_RE)
+    for key, value in (("context", context), ("dockerfile", dockerfile)):
+        if ".." in value.split("/"):
+            raise Halt("DESCRIPTOR_INVALID",
+                       f"{where}.image.{key} must stay inside the repository")
+    return {
+        "name": service["name"],
+        "archetype": archetype,
+        "source_path": source_path,
+        "node_version": node_version,
+        "image": {
+            "context": context,
+            "dockerfile": dockerfile,
+        },
+    }
+
+
+def _validate_suite(service_name, suite_name, acceptance, schema_version):
     if not isinstance(acceptance, dict):
         raise Halt("DESCRIPTOR_INVALID", f"descriptor.tests.{suite_name} must be a mapping")
     where = f"descriptor.tests.{suite_name}"
     _require_keys(
         acceptance,
-        ("type", "path", "mavenArguments", "bindings", "keyVaultBindings",
-         "requires", "dependencies", "timeoutMinutes"),
+        ("type", "path", "mavenArguments", "entrypoint", "arguments", "reportPaths",
+         "bindings", "keyVaultBindings", "requires", "dependencies", "timeoutMinutes"),
         ("type", "path"),
         where,
     )
-    if acceptance["type"] != "maven":
-        raise Halt("DESCRIPTOR_INVALID", f"{where}.type must be maven")
+    test_type = acceptance["type"]
+    if test_type not in ("maven", "script"):
+        raise Halt("DESCRIPTOR_INVALID", f"{where}.type must be maven or script")
+    if schema_version == 3 and test_type != "maven":
+        raise Halt("DESCRIPTOR_INVALID",
+                   f"{where}.type must be maven in schemaVersion 3")
     path = _string_field(acceptance, "path", where, PATH_RE)
     if ".." in path.split("/"):
         raise Halt("DESCRIPTOR_INVALID", f"{where}.path must stay inside the repository")
 
-    maven_arguments = acceptance.get("mavenArguments", ["verify"])
-    if not isinstance(maven_arguments, list) or not maven_arguments:
-        raise Halt("DESCRIPTOR_INVALID", f"{where}.mavenArguments must be a non-empty list")
-    for position, argument in enumerate(maven_arguments):
-        if not isinstance(argument, str) or not MAVEN_ARG_RE.fullmatch(argument):
+    test_entrypoint = ""
+    report_paths = []
+    if test_type == "maven":
+        for key in ("entrypoint", "arguments", "reportPaths"):
+            if key in acceptance:
+                raise Halt("DESCRIPTOR_INVALID",
+                           f"{where}.{key} is only valid for script suites")
+        test_arguments = acceptance.get("mavenArguments", ["verify"])
+        if not isinstance(test_arguments, list) or not test_arguments:
+            raise Halt("DESCRIPTOR_INVALID", f"{where}.mavenArguments must be a non-empty list")
+        for position, argument in enumerate(test_arguments):
+            if not isinstance(argument, str) or not MAVEN_ARG_RE.fullmatch(argument):
+                raise Halt("DESCRIPTOR_INVALID",
+                           f"{where}.mavenArguments[{position}] must be one argv token "
+                           "with no whitespace")
+        maven_arguments = test_arguments
+    else:
+        if "mavenArguments" in acceptance:
             raise Halt("DESCRIPTOR_INVALID",
-                       f"{where}.mavenArguments[{position}] must be one argv token "
-                       "with no whitespace")
+                       f"{where}.mavenArguments is only valid for maven suites")
+        for key in ("entrypoint", "reportPaths"):
+            if key not in acceptance:
+                raise Halt("MISSING_KEY", f"{where}.{key} is required for script suites")
+        test_entrypoint = _string_field(acceptance, "entrypoint", where, PATH_RE)
+        if ".." in test_entrypoint.split("/"):
+            raise Halt("DESCRIPTOR_INVALID",
+                       f"{where}.entrypoint must stay inside the suite directory")
+        test_arguments = acceptance.get("arguments", [])
+        if not isinstance(test_arguments, list):
+            raise Halt("DESCRIPTOR_INVALID", f"{where}.arguments must be a list")
+        for position, argument in enumerate(test_arguments):
+            if not isinstance(argument, str) or not ARGV_TOKEN_RE.fullmatch(argument):
+                raise Halt("DESCRIPTOR_INVALID",
+                           f"{where}.arguments[{position}] must be one printable argv token")
+        report_paths = acceptance["reportPaths"]
+        if not isinstance(report_paths, list) or not report_paths:
+            raise Halt("DESCRIPTOR_INVALID",
+                       f"{where}.reportPaths must be a non-empty list")
+        for position, report_path in enumerate(report_paths):
+            if not isinstance(report_path, str) or not REPORT_PATH_RE.fullmatch(report_path):
+                raise Halt("DESCRIPTOR_INVALID",
+                           f"{where}.reportPaths[{position}] must be a repository-relative glob")
+            if ".." in report_path.split("/"):
+                raise Halt("DESCRIPTOR_INVALID",
+                           f"{where}.reportPaths[{position}] must stay inside the suite directory")
+        maven_arguments = []
 
     bindings = acceptance.get("bindings", {})
     if not isinstance(bindings, dict):
@@ -502,6 +621,21 @@ def _validate_suite(service_name, suite_name, acceptance):
             raise Halt("DESCRIPTOR_INVALID",
                        f"{where}.keyVaultBindings.{name} must be a Key Vault secret name")
 
+    if test_type == "script":
+        declared_names = set(bindings) | set(key_vault_bindings)
+        for position, argument in enumerate(test_arguments):
+            reference = TEMPLATE_REF_RE.fullmatch(argument)
+            if "${" in argument and reference is None:
+                raise Halt("DESCRIPTOR_INVALID",
+                           f"{where}.arguments[{position}] must use an environment "
+                           "placeholder as the entire argv token")
+            if reference is not None:
+                ref = reference.group(1)
+                if ref not in declared_names:
+                    raise Halt("TEMPLATE_REF",
+                               f"{where}.arguments[{position}] references undeclared "
+                               f"binding '{ref}'")
+
     requires = acceptance.get("requires", {})
     if not isinstance(requires, dict):
         raise Halt("DESCRIPTOR_INVALID", f"{where}.requires must be a mapping")
@@ -522,8 +656,11 @@ def _validate_suite(service_name, suite_name, acceptance):
 
     return {
         "service": service_name,
-        "test_type": acceptance["type"],
+        "test_type": test_type,
         "test_dir": path,
+        "test_entrypoint": test_entrypoint,
+        "test_arguments": test_arguments,
+        "report_paths": report_paths,
         "maven_arguments": maven_arguments,
         "bindings": bindings,
         "sources": sources,
@@ -770,11 +907,16 @@ def build_report(mode, contract, facts, resolved, missing, agreement):
         "report_schema": REPORT_SCHEMA,
         "mode": mode,
         "service": contract["service"],
+        "service_config": contract["service_config"],
         "contract": {
             "suite": contract["suite"],
             "suites": contract["suites"],
+            "suite_types": contract["suite_types"],
             "test_type": contract["test_type"],
             "test_dir": contract["test_dir"],
+            "test_entrypoint": contract["test_entrypoint"],
+            "test_arguments": contract["test_arguments"],
+            "report_paths": contract["report_paths"],
             "maven_arguments": contract["maven_arguments"],
             "timeout_minutes": contract["timeout_minutes"],
             "requires": contract["requires"],

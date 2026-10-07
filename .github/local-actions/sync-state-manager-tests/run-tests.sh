@@ -252,6 +252,10 @@ REV_NOW="$("$GEN_REV")"
 [[ -n "$REV_NOW" ]] || die "generation revision is empty"
 [[ "$(SYNC_MODE=mirror "$GEN_REV")" == "mirror" ]] || die "mirror mode did not short-circuit the revision"
 [[ "$(SYNC_MODE=mirror "$GEN_REV")" != "$REV_NOW" ]] || die "mirror and filter share a revision"
+[[ "$(SYNC_MODE=passthrough "$GEN_REV")" == "passthrough" ]] || die "passthrough mode did not short-circuit the revision"
+if SYNC_MODE=unknown "$GEN_REV" >/dev/null 2>&1; then
+  die "unknown sync mode must halt"
+fi
 mkdir -p "$TMP/fixture/.github/actions/upstream-filter"
 printf 'service: demo\n' > "$TMP/fixture/.github/upstream-filter.yml"
 printf 'ENGINE_VERSION = "1.0.0"\n' > "$TMP/fixture/.github/actions/upstream-filter/upstream_filter.py"

@@ -556,6 +556,26 @@ MIR_PARENTS=$(git -C "$PLUMB" rev-list --parents -n 1 "$commit" | wc -w | tr -d 
 [ "$(git -C "$PLUMB" rev-parse "$commit^")" = "$UP_SHA" ] || die "mirror first-generation parent is not the upstream tip"
 ok "mirror mode: verbatim tree, sentinel trailer, no report, converges"
 
+note "plumbing: passthrough mode preserves an intact source tree and converges"
+PASS_OUT="$TMP/passthrough.env"
+(cd "$PLUMB" && SYNC_MODE=passthrough bash "$(dirname "$ENGINE")/generate-branch.sh" "" "$UP_SHA" "$TMP/no-such-config.yml" "$PASS_OUT")
+# shellcheck disable=SC1090
+. "$PASS_OUT"
+[ "${has_changes:-}" = "true" ] || die "passthrough first generation reported no changes"
+[ "$filter_rev" = "passthrough" ] || die "passthrough filter_rev is not the sentinel"
+[ "$tree" = "$(git -C "$PLUMB" rev-parse "${UP_SHA}^{tree}")" ] || die "passthrough tree changed upstream bytes"
+git -C "$PLUMB" cat-file -p "$commit" | grep -q "chore: passthrough upstream tree" || die "passthrough commit message is wrong"
+PASSTHROUGH_COMMIT="$commit"
+PASS_OUT2="$TMP/passthrough2.env"
+(cd "$PLUMB" && SYNC_MODE=passthrough bash "$(dirname "$ENGINE")/generate-branch.sh" "$PASSTHROUGH_COMMIT" "$UP_SHA" "$TMP/no-such-config.yml" "$PASS_OUT2")
+# shellcheck disable=SC1090
+. "$PASS_OUT2"
+[ "${has_changes:-}" = "false" ] || die "passthrough repeat synchronization did not converge"
+RC=0
+(cd "$PLUMB" && SYNC_MODE=unknown bash "$(dirname "$ENGINE")/generate-branch.sh" "" "$UP_SHA" "$CONFIG" "$TMP/unknown.env") >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 2 ] || die "unknown sync mode must halt with exit 2"
+ok "passthrough mode: intact first generation and repeat sync"
+
 note "seed-source: extracts trees, surviving a deletion through an ours-merge"
 SSR="$TMP/seed-source-repo"
 rm -rf "$SSR"

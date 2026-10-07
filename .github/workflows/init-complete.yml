@@ -26,6 +26,7 @@ jobs:
       issues: write
     outputs:
       upstream_repo: ${{ steps.validate.outputs.upstream_repo }}
+      sync_mode: ${{ steps.validate.outputs.sync_mode }}
       should_proceed: ${{ steps.validate.outputs.should_proceed }}
     steps:
       - name: Checkout
@@ -122,6 +123,7 @@ jobs:
         uses: ./.github/local-actions/init-helpers
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SYNC_MODE: ${{ needs.validate_and_setup.outputs.sync_mode }}
         with:
           operation: setup-upstream
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -139,6 +141,10 @@ jobs:
             echo "URL length: ${#REPO_URL}"
             if ! GH_TOKEN=$GH_TOKEN gh variable set UPSTREAM_REPO_URL --body "$REPO_URL"; then
               echo "Failed to set UPSTREAM_REPO_URL variable"
+              VARIABLES_SUCCESS=false
+            fi
+            if ! GH_TOKEN=$GH_TOKEN gh variable set SYNC_MODE --body "${{ needs.validate_and_setup.outputs.sync_mode }}"; then
+              echo "Failed to set SYNC_MODE variable"
               VARIABLES_SUCCESS=false
             fi
 
@@ -174,13 +180,16 @@ jobs:
         if: env.RESUME_ONLY != 'true'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SYNC_MODE: ${{ needs.validate_and_setup.outputs.sync_mode }}
         run: |
           # One filter config for generation, seeding, stamping, and the planted copy, so the
           # planted file always matches the generated commit's Filter-Rev. HEAD stays on main
           # for this whole step (the branch is built through plumbing), which is what makes
           # the hand-planted test below valid.
           FILTER_CONFIG="$RUNNER_TEMP/upstream-filter.yml"
-          if [ -f ".github/upstream-filter.yml" ]; then
+          if [ "$SYNC_MODE" = "passthrough" ]; then
+            echo "::notice::Passthrough mode keeps the upstream tree intact"
+          elif [ -f ".github/upstream-filter.yml" ]; then
             echo "::notice::Using the hand-planted .github/upstream-filter.yml from main"
             cp ".github/upstream-filter.yml" "$FILTER_CONFIG"
           else
@@ -211,7 +220,7 @@ jobs:
             git branch -f fork_upstream "$BASE_SHA"
           fi
 
-          if [ -n "$(git ls-tree fork_upstream -- provider devops)" ]; then
+          if [ "$SYNC_MODE" = "filter" ] && [ -n "$(git ls-tree fork_upstream -- provider devops)" ]; then
             echo "::error::Generated fork_upstream still contains provider/ or devops/"
             exit 1
           fi
@@ -225,10 +234,22 @@ jobs:
 
           if [ $PUSH_EXIT_CODE -ne 0 ]; then
             echo "Push failed, checking for push protection violation..."
-            echo "PUSH_EXIT_CODE=$PUSH_EXIT_CODE" >> $GITHUB_ENV
           else
+            if [ "$SYNC_MODE" = "passthrough" ]; then
+              echo "::notice::Publishing upstream tags..."
+              if git for-each-ref --format='%(refname)' refs/upstream-tags/ | grep -q . \
+                && ! git push --atomic origin 'refs/upstream-tags/*:refs/tags/*' 2>&1 | tee -a "$RUNNER_TEMP/push_output.txt"; then
+                PUSH_EXIT_CODE=1
+                echo "::error::Failed to publish upstream tags"
+              fi
+            fi
+          fi
+
+          if [ $PUSH_EXIT_CODE -eq 0 ]; then
             echo "::notice::Successfully pushed fork_upstream branch"
             echo "PUSH_EXIT_CODE=0" >> $GITHUB_ENV
+          else
+            echo "PUSH_EXIT_CODE=$PUSH_EXIT_CODE" >> $GITHUB_ENV
           fi
 
       - name: Handle fork_upstream push protection
@@ -262,7 +283,14 @@ jobs:
 
       - name: Seed fork-owned trees and plant filter config
         if: env.PUSH_EXIT_CODE == '0'
+        env:
+          SYNC_MODE: ${{ needs.validate_and_setup.outputs.sync_mode }}
         run: |
+          if [ "$SYNC_MODE" = "passthrough" ]; then
+            echo "::notice::Passthrough mode has no fork-owned seed trees"
+            exit 0
+          fi
+
           # HEAD is fork_integration. Seeded trees enter history after the branch point that
           # becomes the cascade merge base, so upstream merges never see them (ADR-038).
           SERVICE_SLUG=$(sed -n "s/^service:[[:space:]]*[\"']\{0,1\}\([a-z0-9-]*\).*/\1/p" "$FILTER_CONFIG" | head -1)

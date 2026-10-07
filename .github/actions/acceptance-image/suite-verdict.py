@@ -13,9 +13,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Decide one suite's verdict from its Surefire and Failsafe reports.
+"""Decide one suite's verdict from its JUnit XML reports.
 
-Usage: suite-verdict.py --exit-code N --reports DIR
+Usage: suite-verdict.py --exit-code N --reports DIR [--patterns-json JSON]
 
 Prints one line for the run summary and exits 0 for pass, 1 for fail. The
 console is not consulted: -q hides the summary lines and
@@ -25,24 +25,35 @@ that was not skipped, and no failures or errors.
 """
 
 import argparse
+import json
 import pathlib
 import sys
 import xml.etree.ElementTree as ET
 
-REPORT_DIRS = ("surefire-reports", "failsafe-reports")
+DEFAULT_PATTERNS = (
+    "**/surefire-reports/TEST-*.xml",
+    "**/failsafe-reports/TEST-*.xml",
+)
 
 
-def count(reports):
+def count(reports, patterns):
     totals = {"tests": 0, "skipped": 0, "failures": 0, "errors": 0}
-    files = [p for p in pathlib.Path(reports).rglob("TEST-*.xml")
-             if p.parent.name in REPORT_DIRS]
+    root_dir = pathlib.Path(reports)
+    files = sorted({
+        path
+        for pattern in patterns
+        for path in root_dir.glob(pattern)
+        if path.is_file()
+    })
     for path in files:
         try:
             root = ET.parse(path).getroot()
         except ET.ParseError:
             return None, f"unreadable report {path.name}"
-        for key in totals:
-            totals[key] += int(root.get(key, 0))
+        suites = [root] if root.tag == "testsuite" else root.findall(".//testsuite")
+        for suite in suites:
+            for key in totals:
+                totals[key] += int(suite.get(key, 0))
     return totals, ""
 
 
@@ -50,9 +61,26 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--exit-code", type=int, required=True)
     parser.add_argument("--reports", required=True)
+    parser.add_argument(
+        "--patterns-json",
+        default="",
+        help="JSON array of JUnit XML globs relative to --reports; "
+             "defaults to Maven Surefire and Failsafe reports",
+    )
     args = parser.parse_args()
 
-    totals, problem = count(args.reports)
+    try:
+        patterns = json.loads(args.patterns_json) if args.patterns_json else DEFAULT_PATTERNS
+    except json.JSONDecodeError as error:
+        print(f"FAIL: invalid report patterns: {error}")
+        return 1
+    if not isinstance(patterns, (list, tuple)) or not patterns or not all(
+        isinstance(pattern, str) and pattern for pattern in patterns
+    ):
+        print("FAIL: report patterns must be a non-empty JSON string array")
+        return 1
+
+    totals, problem = count(args.reports, patterns)
     if problem:
         print(f"FAIL: {problem}")
         return 1
