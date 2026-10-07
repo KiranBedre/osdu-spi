@@ -133,15 +133,40 @@ runs:
         username: ${{ github.actor }}
         password: ${{ inputs.github_token }}
 
-    - name: "Build container image"
-      id: build
-      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
+    - name: "Stage validated build context"
+      shell: bash
       env:
         BUILD_CONTEXT: ${{ inputs.build_context }}
         DOCKERFILE_PATH: ${{ inputs.dockerfile_path }}
+      run: |
+        set -euo pipefail
+        case "$BUILD_CONTEXT" in
+          /*|*..*) echo "::error::build_context must be a repository-relative path without '..'"; exit 2 ;;
+        esac
+        case "$DOCKERFILE_PATH" in
+          /*|*..*) echo "::error::dockerfile_path must be a repository-relative path without '..'"; exit 2 ;;
+        esac
+
+        workspace=$(realpath "$GITHUB_WORKSPACE")
+        context=$(realpath "$BUILD_CONTEXT")
+        dockerfile=$(realpath "$DOCKERFILE_PATH")
+        [[ -d "$context" && ("$context" == "$workspace" || "$context" == "$workspace/"*) ]] \
+          || { echo "::error::build_context must resolve inside the repository"; exit 2; }
+        [[ -f "$dockerfile" && "$dockerfile" == "$workspace/"* ]] \
+          || { echo "::error::dockerfile_path must resolve inside the repository"; exit 2; }
+
+        target="${RUNNER_TEMP:?RUNNER_TEMP is required}/spi-service-image-context"
+        rm -rf "$target"
+        mkdir -p "$target"
+        cp -a "$context/." "$target/"
+        cp "$dockerfile" "$target/.spi.Dockerfile"
+
+    - name: "Build container image"
+      id: build
+      uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
       with:
-        context: ${{ env.BUILD_CONTEXT }}
-        file: ${{ env.DOCKERFILE_PATH }}
+        context: ${{ runner.temp }}/spi-service-image-context
+        file: ${{ runner.temp }}/spi-service-image-context/.spi.Dockerfile
         push: ${{ inputs.push == 'true' }}
         # Multi-arch only on the push path; validate-only builds skip the QEMU cost on every PR.
         # provenance:false keeps the pushed index to the two real platforms: the unknown/unknown
