@@ -12,7 +12,7 @@ inputs:
     description: 'Default branch name (main/master)'
     required: true
   sync_mode:
-    description: 'Sync tier: "mirror" for customer forks (ADR-039), otherwise filter'
+    description: 'Tree generation mode: filter, mirror, or passthrough'
     required: false
     default: ''
 

@@ -21,7 +21,17 @@ The two phases:
 The workflow verifies that the repository is not the template itself, creates the standard labels, and opens a setup issue. Reply to that issue with the upstream repository reference; the issue comment triggers the completion workflow.
 
 ### Full Configuration Phase (5-10 minutes)
-The completion workflow validates the upstream repository, sets `UPSTREAM_REPO_URL`, generates a filtered `fork_upstream` through the upstream filter engine, creates `fork_integration`, seeds the fork-owned Azure trees and plants `.github/upstream-filter.yml`, deploys all fork workflows, applies fork resources and repository rulesets, and marks `INITIALIZATION_COMPLETE`.
+The completion workflow validates the upstream repository, sets
+`UPSTREAM_REPO_URL` and `SYNC_MODE`, creates `fork_upstream` and
+`fork_integration`, deploys all fork workflows, applies fork resources and
+repository rulesets, and marks `INITIALIZATION_COMPLETE`.
+
+The default `filter` mode generates a provider-less `fork_upstream`, seeds the
+fork-owned Azure trees, and plants `.github/upstream-filter.yml`. Repositories
+without a provider/core ownership split can select `passthrough` by adding
+`mode: passthrough` as the second line of the issue response. That mode keeps
+the upstream tree intact, publishes its tags, skips Azure tree seeding, and
+still receives SPI workflow updates through template sync.
 
 The filter configuration comes from the template's `.github/fork-resources/upstream-filter.yml` with `<service>` substituted from the upstream repository name. A service that deviates from the conventional shape (extra top-level entries, a module prefix that differs from the repository name) uses the escape hatch: commit a complete `.github/upstream-filter.yml` to the fork's `main` before replying to the initialization issue, and initialization prefers that file over the template. If the filter halts on an unclassified entry, the initialization issue receives the halt detail and both remediation paths; fix the config and comment again to retry.
 
@@ -34,6 +44,7 @@ On success the setup issue is closed and the repository is ready for its first s
 ### Required Configuration
 - **GitHub App credentials** - `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` must be available for workflow and ruleset writes
 - **Upstream repository** - Reply to the initialization issue with `owner/repository` or a supported repository URL
+- **Upstream mode** - Use the default filter mode for conventional Java services, or explicitly select passthrough for an intact DDMS, DAG, or library
 - **Filter configuration** - Generated automatically from the template; only nonconventional services need a hand-planted `.github/upstream-filter.yml` on `main` before replying to the issue
 - **Team permissions** - Make sure the team has the access it needs
 
@@ -49,8 +60,13 @@ On success the setup issue is closed and the repository is ready for its first s
    ```
    OpenSubsurfaceDataForum/partition
    ```
+   For an intact repository:
+   ```
+   https://community.opengroup.org/osdu/example
+   mode: passthrough
+   ```
 
-3. **Verify repository variables** - Initialization sets `UPSTREAM_REPO_URL` and `INITIALIZATION_COMPLETE`
+3. **Verify repository variables** - Initialization sets `UPSTREAM_REPO_URL`, `SYNC_MODE`, and `INITIALIZATION_COMPLETE`
 4. **Verify branch protection** - Ensure the Default Branch Protection, Integration Branch Protection, and GitHub Copilot Code Review rulesets are active
 5. **Test initial sync** - Run upstream sync manually to verify setup
 
@@ -82,7 +98,7 @@ On success the setup issue is closed and the repository is ready for its first s
 
 ### Branches
 - **`main`** - Your production branch (protected)
-- **`fork_upstream`** - Generated upstream-owned tree without provider source
+- **`fork_upstream`** - Generated upstream-owned tree; provider-less in filter mode and intact in passthrough mode
 - **`fork_integration`** - Integration and conflict resolution branch
 
 ### Workflows Installed
@@ -104,6 +120,7 @@ On success the setup issue is closed and the repository is ready for its first s
 | Name | Type | Purpose |
 |------|------|---------|
 | `UPSTREAM_REPO_URL` | Variable, set during initialization | Repository to synchronize |
+| `SYNC_MODE` | Variable, set during initialization | `filter` or `passthrough` upstream tree generation |
 | `INITIALIZATION_COMPLETE` | Variable, set during initialization | Enables fork workflows |
 | `MAVEN_PROFILE` | Optional variable | Overrides the `core,azure` default |
 | `SERVICE_NAME` | Optional variable | Overrides the repository-name image/service slug |
@@ -124,10 +141,10 @@ On success the setup issue is closed and the repository is ready for its first s
 
 - [ ] **Setup issue closed successfully** - Initialization completed without errors
 - [ ] **Three branches exist** - `main`, `fork_upstream`, `fork_integration`
-- [ ] **`fork_upstream` is filtered** - No `provider/` or `devops/` directories on the branch
-- [ ] **Azure trees seeded on `main`** - `provider/<service>-azure` and `testing/<service>-test-azure` present, with `.github/upstream-filter.yml`
+- [ ] **`fork_upstream` matches its mode** - Provider-less in filter mode, byte-identical to upstream in passthrough mode
+- [ ] **Mode-specific setup is complete** - Azure trees and filter config seeded in filter mode, or upstream tags published in passthrough mode
 - [ ] **Workflows active** - All deployed fork workflows are visible in the Actions tab
-- [ ] **Variables configured** - `UPSTREAM_REPO_URL` and `INITIALIZATION_COMPLETE` are set
+- [ ] **Variables configured** - `UPSTREAM_REPO_URL`, `SYNC_MODE`, and `INITIALIZATION_COMPLETE` are set
 - [ ] **GitHub App available** - Release App credentials support protected writes
 - [ ] **Protection enabled** - `main` branch requires PR reviews
 - [ ] **Initial sync works** - Manual upstream sync runs successfully

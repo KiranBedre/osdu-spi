@@ -37,6 +37,8 @@ RESOLVER="${RESOLVER:-.github/actions/acceptance-resolver/resolve.py}"
 
 SUITE_DIR="${SERVICE_NAME}-acceptance-test"
 SUITE_DIRS="$SUITE_DIR"
+TEST_TYPE="maven"
+NODE_VERSION=""
 SOURCE="default"
 if [[ -f "$DESCRIPTOR_PATH" ]]; then
   REPORT="$(mktemp)"
@@ -48,7 +50,21 @@ if [[ -f "$DESCRIPTOR_PATH" ]]; then
 import json, sys
 suites = json.load(open(sys.argv[1]))['contract']['suites']
 print(' '.join([suites['acceptance']] + [d for n, d in sorted(suites.items()) if n != 'acceptance']))" "$REPORT")"
+  TEST_TYPE="$(python3 -c "
+import json, sys
+types = set(json.load(open(sys.argv[1]))['contract']['suite_types'].values())
+if len(types) != 1:
+    raise SystemExit('all suites in one acceptance image must use the same type')
+print(types.pop())" "$REPORT")"
+  NODE_VERSION="$(python3 -c "
+import json, sys
+print(json.load(open(sys.argv[1]))['service_config']['node_version'])" "$REPORT")"
   SOURCE="descriptor"
+fi
+
+if [[ "$TEST_TYPE" == "script" && "$NODE_VERSION" != "22" ]]; then
+  echo "::error::Script acceptance images currently require nodeVersion 22, got '$NODE_VERSION'"
+  exit 2
 fi
 
 BUILDABLE="true"
@@ -70,6 +86,8 @@ done
 {
   echo "suite_dir=$SUITE_DIR"
   echo "suite_dirs=$SUITE_DIRS"
+  echo "test_type=$TEST_TYPE"
+  echo "node_version=$NODE_VERSION"
   echo "buildable=$BUILDABLE"
   echo "reason=$REASON"
 } >> "${GITHUB_OUTPUT:-/dev/stdout}"

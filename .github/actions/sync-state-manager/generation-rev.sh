@@ -20,17 +20,22 @@
 # no-op upstream commit produce a different tree (ADR-024, ADR-038).
 #
 # Arguments: $1 repository root (optional, defaults to the enclosing work tree)
-# Env: SYNC_MODE ("mirror" for the customer tier, ADR-039; otherwise filter)
+# Env: SYNC_MODE ("mirror" or "passthrough" for verbatim trees; otherwise filter)
 
 set -euo pipefail
 
 MODE="${SYNC_MODE:-filter}"
 
-if [[ "$MODE" == "mirror" ]]; then
-  # Mirror generation copies the upstream tree verbatim. The engine and config
+if [[ "$MODE" == "mirror" || "$MODE" == "passthrough" ]]; then
+  # Verbatim generation copies the upstream tree unchanged. The engine and config
   # are never read, so the upstream commit is the only input.
-  echo "mirror"
+  echo "$MODE"
   exit 0
+fi
+
+if [[ "$MODE" != "filter" ]]; then
+  echo "generation-rev: unsupported SYNC_MODE '$MODE'" >&2
+  exit 2
 fi
 
 if [[ $# -ge 1 && -n "$1" ]]; then

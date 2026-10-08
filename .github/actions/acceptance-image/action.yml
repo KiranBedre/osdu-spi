@@ -42,6 +42,9 @@ outputs:
   suite_dirs:
     description: 'Every suite directory baked into the image, space-separated'
     value: ${{ steps.suite.outputs.suite_dirs }}
+  test_type:
+    description: 'Suite runtime type: maven or script'
+    value: ${{ steps.suite.outputs.test_type }}
   image_repository:
     description: 'Full registry path, e.g. ghcr.io/<org>/<service>-acceptance (empty when skipped)'
     value: ${{ steps.meta.outputs.image_repository }}
@@ -118,10 +121,9 @@ runs:
       uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf  # v7.2.0
       with:
         context: ${{ inputs.build_context }}
-        file: ${{ inputs.dockerfile_path }}
+        file: ${{ steps.suite.outputs.test_type == 'script' && 'build/script-acceptance.Dockerfile' || inputs.dockerfile_path }}
         push: ${{ inputs.push == 'true' }}
-        # amd64-only: this build runs Maven, which costs many minutes under QEMU arm64
-        # emulation for no consumer (see the Dockerfile).
+        # amd64-only: CI is the only consumer and dependency prewarming is costly under QEMU.
         platforms: linux/amd64
         provenance: false
         tags: ${{ steps.tags.outputs.docker_tags }}

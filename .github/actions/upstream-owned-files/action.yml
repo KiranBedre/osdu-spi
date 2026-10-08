@@ -17,7 +17,7 @@ inputs:
     description: 'true when the head branch lives in this repository'
     required: true
   sync_mode:
-    description: 'The SYNC_MODE repository variable; mirror forks have no ownership split'
+    description: 'The SYNC_MODE repository variable; verbatim modes have no ownership split'
     required: false
     default: ''
 outputs:

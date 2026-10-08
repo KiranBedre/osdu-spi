@@ -38,7 +38,14 @@ case "$HEAD_REF" in
     if [ "$SAME_REPO" = "true" ]; then skip "$HEAD_REF moves upstream code by design"; fi
     ;;
 esac
-[ "${SYNC_MODE:-}" != "mirror" ] || skip "mirror mode has no ownership split (ADR-039)"
+case "${SYNC_MODE:-filter}" in
+  mirror|passthrough) skip "${SYNC_MODE} mode has no ownership split" ;;
+  filter) ;;
+  *)
+    echo "upstream-owned-files: unsupported SYNC_MODE '$SYNC_MODE'" >&2
+    exit 2
+    ;;
+esac
 
 # Tested on the base tree: a pull request that deletes the filter config must not switch the check off.
 git cat-file -e "$BASE_SHA:.github/upstream-filter.yml" 2>/dev/null \

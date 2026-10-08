@@ -1,7 +1,7 @@
 # Acceptance Resolver
 
 The resolver behind ADR-040. It joins the fork-owned service descriptor
-(`.spi/service.yaml`, schema v3) with the stack's facts envelope
+(`.spi/service.yaml`, schema v3 or v4) with the stack's facts envelope
 (`spi info --json`, `apiVersion: spi.osdu.dev/v1`) and caller-supplied Key
 Vault secret values into the environment map an acceptance suite runs with —
 an `.env` file suitable for `docker run --env-file` (Maven does not read this file directly).
@@ -53,11 +53,32 @@ The composite `action.yml` wraps exactly the first invocation. `--suite`
 selects which of the descriptor's named suites to resolve, `acceptance` by
 default; the whole descriptor is validated either way, and a name it does not
 declare exits 2. `--contract-only` validates the descriptor and reports the
-contract fields (suite path, Maven argv, requires, secret names, and every
-suite's path) with no facts, no resolution, and no env file. It is how the
+contract fields (service build metadata, suite type and path, argv, report
+globs, requirements, secret names, and every suite's path) with no facts,
+no resolution, and no env file. It is how the
 build lane reads the descriptor where no environment exists, to select the
 suite modules the acceptance image bakes, and how the deploy lane enumerates
 the suites to run. Descriptor violations exit 2 exactly as in the full modes.
+
+## Schema versions and archetypes
+
+Schema version 3 remains the existing `java-maven-azure` contract. Its suites
+remain Maven-only and its build paths retain their conventional defaults.
+
+Schema version 4 adds `node-typescript-azure`. A Node service declares:
+
+- `sourcePath`, the repository-relative package root containing `package.json`;
+- `nodeVersion`, the version supplied to `actions/setup-node`;
+- `image.context` and `image.dockerfile`, the source-based container build
+  inputs.
+
+Version 4 also adds `script` suites. A script suite declares a
+repository-relative `entrypoint`, an optional array of `arguments`, and one or
+more `reportPaths` containing JUnit XML. Consumers execute the entrypoint
+directly with the declared argv tokens. They never evaluate a shell command
+string. An environment reference is a separate argv token such as
+`${SVC_URL}`; embedding it in `--url=${SVC_URL}` is rejected so substitution
+cannot change token boundaries.
 
 ## Modes: two audiences
 
@@ -124,11 +145,14 @@ by design.
 - **Reserved environment names** are rejected at validation: exact names
   (`AZURE_CLIENT_ID`, `AZURE_TENANT_ID`, `AZURE_SUBSCRIPTION_ID`,
   `AZURE_FEDERATED_TOKEN_FILE`, plus process basics such as `PATH`, `HOME`,
-  `LD_PRELOAD`, `MAVEN_OPTS`) and prefixes (`ACTIONS_`, `GITHUB_`, `RESOLVER_`, `RUNNER_`,
-  `SPI_STACK_`).
-- **`mavenArguments` is an argv array.** Each token must be free of
-  whitespace and control characters; consumers pass the decoded array
-  directly to Maven and never evaluate it as a shell string.
+  `LD_PRELOAD`, `MAVEN_OPTS`) and prefixes (`ACTIONS_`, `GITHUB_`,
+  `RESOLVER_`, `RUNNER_`, `SPI_STACK_`, `SUITE_`).
+- **Suite arguments are argv arrays.** Maven arguments remain whitespace-free
+  tokens. Script arguments may contain spaces, but not control characters.
+  Environment placeholders occupy an entire token.
+  Consumers pass decoded tokens directly and never evaluate a shell string.
+- **Script suites must declare JUnit reports.** A successful process with no
+  matching test report cannot be treated as a passing suite.
 - **Secret values can never live in the descriptor**: `keyvault:` sources
   take no `default` and no `value`; `keyVaultBindings` map to secret names
   only.

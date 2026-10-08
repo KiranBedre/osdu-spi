@@ -37,6 +37,7 @@ Decisions governing repository initialization, configuration, and security setup
 | [007](007-initialization-workflow-bootstrap.md) | **Workflow Bootstrap Pattern** | :material-minus: Medium |
 | [008](008-centralized-label-management.md) | **Centralized Label Management** | :material-minus: Medium |
 | [016](016-initialization-security-handling.md) | **Initialization Security Handling** | :material-minus: Medium |
+| [043](043-intact-upstream-passthrough.md) | **Intact Upstream Passthrough** | :material-trending-up: High |
 
 ### :material-sync: Upstream Synchronization & Integration
 
@@ -77,6 +78,7 @@ Build architecture, dependency management, and documentation:
 | [025](025-java-maven-build-architecture.md) | **Java/Maven Build Architecture** | :material-trending-up: High |
 | [026](026-dependabot-security-update-strategy.md) | **Dependabot Security Updates** | :material-minus: Medium |
 | [027](027-documentation-generation-strategy.md) | **Documentation Generation** | :material-minus: Medium |
+| [044](044-node-typescript-service-archetype.md) | **Node and TypeScript Service Archetype** | :material-trending-up: High |
 
 ### :material-rocket-launch: CI/CD & Deployment
 

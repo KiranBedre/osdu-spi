@@ -106,7 +106,9 @@ run_list "$TMP/o7" BASE_REF=fork_integration HEAD_REF=x BASE_SHA="$BASE" HEAD_SH
 [ "$(output_value "$TMP/o7" checked)" = "false" ] || die "non-main base must be exempt"
 run_list "$TMP/o8" BASE_REF=main HEAD_REF=x BASE_SHA="$BASE" HEAD_SHA="$HEAD" SAME_REPO=true SYNC_MODE=mirror >/dev/null
 [ "$(output_value "$TMP/o8" checked)" = "false" ] || die "mirror mode must be exempt"
-ok "same-repo automation heads, non-main base, mirror mode"
+run_list "$TMP/o8b" BASE_REF=main HEAD_REF=x BASE_SHA="$BASE" HEAD_SHA="$HEAD" SAME_REPO=true SYNC_MODE=passthrough >/dev/null
+[ "$(output_value "$TMP/o8b" checked)" = "false" ] || die "passthrough mode must be exempt"
+ok "same-repo automation heads, non-main base, verbatim modes"
 
 note "missing fork_upstream fails closed"
 git -C "$WS" push -q origin --delete fork_upstream && git -C "$WS" update-ref -d refs/remotes/origin/fork_upstream

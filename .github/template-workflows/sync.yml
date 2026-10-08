@@ -48,8 +48,14 @@ jobs:
           }
 
       - name: Fetch Upstream
+        env:
+          SYNC_MODE: ${{ vars.SYNC_MODE }}
         run: |
-          git fetch upstream --prune
+          if [ "${SYNC_MODE:-filter}" = "passthrough" ]; then
+            git fetch upstream --prune --no-tags
+          else
+            git fetch upstream --prune
+          fi
 
           if git rev-parse --verify upstream/main >/dev/null 2>&1; then
             DEFAULT_BRANCH="main"
@@ -60,6 +66,17 @@ jobs:
             exit 1
           fi
           echo "DEFAULT_BRANCH=$DEFAULT_BRANCH" >> $GITHUB_ENV
+
+      - name: Publish new passthrough tags
+        if: vars.SYNC_MODE == 'passthrough'
+        run: |
+          git fetch upstream --prune --no-tags '+refs/tags/*:refs/upstream-tags/*'
+          if git for-each-ref --format='%(refname)' refs/upstream-tags/ | grep -q .; then
+            git push --atomic origin 'refs/upstream-tags/*:refs/tags/*'
+            git fetch origin --tags
+          else
+            echo "Upstream has no tags to publish"
+          fi
 
       - name: Check for active cascades
         env:
@@ -100,7 +117,7 @@ jobs:
         if: steps.sync-state.outputs.should_create_pr == 'true' || steps.sync-state.outputs.should_update_branch == 'true'
         env:
           GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
-          # mirror is the customer tier (ADR-039): the upstream tip is taken verbatim, no filter engine.
+          # mirror and passthrough take the upstream tip verbatim, without the filter engine.
           SYNC_MODE: ${{ vars.SYNC_MODE }}
         run: |
           echo "Sync mode: ${SYNC_MODE:-filter}"
