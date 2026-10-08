@@ -39,10 +39,10 @@ descriptor first and retains Maven detection as the compatibility fallback.
 
 The Docker build action has two explicit kinds. `maven-jar` resolves and copies
 the built artifact as before. `source` restores the tested `dist`,
-production-pruned `node_modules`, package metadata, and lockfile into the
-declared context before building its Dockerfile. The image therefore consumes
-the output of the Node build job instead of installing and compiling the
-package a second time.
+production-only `node_modules` recreated from the same lockfile, package
+metadata, and lockfile into the declared context before building its
+Dockerfile. The image therefore consumes the output of the Node build job
+instead of installing and compiling the package a second time.
 Source images publish for `linux/amd64`, matching the Node build runner and the
 current AKS target. This prevents architecture-specific native modules from an
 amd64 artifact being mislabeled in an arm64 image. Maven JAR images retain
