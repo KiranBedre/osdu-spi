@@ -17,6 +17,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ACTION="$HERE/../../actions/node-build"
+DOCKER_ACTION="$HERE/../../actions/docker-build"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -64,6 +65,26 @@ EOF
 cmp -s "$TMP/npm.log" "$TMP/expected.log" || die "npm commands or order changed"
 grep -q '^build_result=success$' "$TMP/output" || die "success output missing"
 ok "locked package builds with verified test and coverage evidence"
+
+mkdir -p "$TMP/work/app/dist" "$TMP/work/app/node_modules/example"
+echo "compiled" > "$TMP/work/app/dist/server.js"
+echo "dependency" > "$TMP/work/app/node_modules/example/index.js"
+(
+  cd "$TMP/work"
+  WORKING_DIRECTORY=app RUNTIME_ARCHIVE="$TMP/runtime/node-runtime.tar.gz" \
+    "$ACTION/package-runtime.sh"
+)
+rm -rf "$TMP/work/app/dist" "$TMP/work/app/node_modules"
+(
+  cd "$TMP/work"
+  BUILD_CONTEXT=app RUNTIME_ARCHIVE="$TMP/runtime/node-runtime.tar.gz" \
+    "$DOCKER_ACTION/restore-node-runtime.sh"
+)
+[[ -f "$TMP/work/app/package.json" ]] || die "package metadata missing from runtime artifact"
+[[ -f "$TMP/work/app/package-lock.json" ]] || die "lockfile missing from runtime artifact"
+[[ -f "$TMP/work/app/dist/server.js" ]] || die "compiled output missing from runtime artifact"
+[[ -f "$TMP/work/app/node_modules/example/index.js" ]] || die "dependencies missing from runtime artifact"
+ok "runtime artifact contains only deployable package inputs"
 
 rm "$TMP/work/app/test-results.xml"
 cat > "$TMP/bin/npm" <<'EOF'
