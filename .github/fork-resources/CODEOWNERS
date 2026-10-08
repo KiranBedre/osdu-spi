@@ -15,6 +15,7 @@
 /provider/<service>-azure/      <owners>
 /testing/<service>-test-azure/  <owners>
 /.spi/                          <owners>
+/.github/workflows/service-*.yml <owners>
 /.github/upstream-filter.yml    <owners>
 /.github/CODEOWNERS             <owners>
 /CONTRIBUTING.md                <owners>
