@@ -40,5 +40,7 @@ for lock_file in package-lock.json npm-shrinkwrap.json; do
 done
 [[ "${#files[@]}" -gt 3 ]] || fail "runtime package has no npm lockfile"
 
+npm --prefix "$package_root" prune --omit=dev --ignore-scripts
+
 mkdir -p "$(dirname "$RUNTIME_ARCHIVE")"
 tar -C "$package_root" -czf "$RUNTIME_ARCHIVE" "${files[@]}"

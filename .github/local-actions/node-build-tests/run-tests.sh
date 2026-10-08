@@ -71,9 +71,11 @@ echo "compiled" > "$TMP/work/app/dist/server.js"
 echo "dependency" > "$TMP/work/app/node_modules/example/index.js"
 (
   cd "$TMP/work"
-  WORKING_DIRECTORY=app RUNTIME_ARCHIVE="$TMP/runtime/node-runtime.tar.gz" \
+  PATH="$TMP/bin:$PATH" WORKING_DIRECTORY=app RUNTIME_ARCHIVE="$TMP/runtime/node-runtime.tar.gz" \
     "$ACTION/package-runtime.sh"
 )
+grep -q '^--prefix .*/app prune --omit=dev --ignore-scripts$' "$TMP/npm.log" \
+  || die "runtime dependencies were not pruned"
 rm -rf "$TMP/work/app/dist" "$TMP/work/app/node_modules"
 (
   cd "$TMP/work"
@@ -84,7 +86,7 @@ rm -rf "$TMP/work/app/dist" "$TMP/work/app/node_modules"
 [[ -f "$TMP/work/app/package-lock.json" ]] || die "lockfile missing from runtime artifact"
 [[ -f "$TMP/work/app/dist/server.js" ]] || die "compiled output missing from runtime artifact"
 [[ -f "$TMP/work/app/node_modules/example/index.js" ]] || die "dependencies missing from runtime artifact"
-ok "runtime artifact contains only deployable package inputs"
+ok "runtime artifact contains pruned deployable package inputs"
 
 rm "$TMP/work/app/test-results.xml"
 cat > "$TMP/bin/npm" <<'EOF'
