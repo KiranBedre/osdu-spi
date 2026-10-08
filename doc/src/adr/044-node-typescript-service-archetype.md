@@ -42,6 +42,10 @@ the built artifact as before. `source` restores the tested `dist`,
 `node_modules`, package metadata, and lockfile into the declared context before
 building its Dockerfile. The image therefore consumes the output of the Node
 build job instead of installing and compiling the package a second time.
+Source images publish for `linux/amd64`, matching the Node build runner and the
+current AKS target. This prevents architecture-specific native modules from an
+amd64 artifact being mislabeled in an arm64 image. Maven JAR images retain
+their existing multi-architecture publication.
 
 Schema version 4 also adds `script` acceptance suites. Each suite declares a
 repository-relative executable, argv tokens, and JUnit report globs. The
@@ -76,6 +80,8 @@ halts image resolution instead of silently running tests on the wrong runtime.
   image and extending the explicit compatibility contract.
 - Node repositories must adapt their test commands to emit JUnit and LCOV
   evidence at stable paths.
+- Node source images require a platform-specific build job before the template
+  can publish an arm64 variant.
 
 ## Related Decisions
 
