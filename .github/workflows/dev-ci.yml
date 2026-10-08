@@ -148,6 +148,8 @@ jobs:
           DOCKER_PUSH_IF=$(yq -r '.jobs."docker-push".if' "$VALIDATE")
           assert_contains "$DOCKER_PUSH_IF" 'always()' \
             "docker-push must evaluate after an irrelevant language build is skipped"
+          assert_yq '.on.workflow_dispatch.inputs.force_full_pipeline.type == "boolean"' "$VALIDATE" \
+            "validate.yml must declare the force_full_pipeline input used by docker-push"
 
           CHECK_PATHS=$(yq -r '.jobs."check-paths".steps[] | select(.id == "filter") | .run' "$VALIDATE")
           assert_contains "$CHECK_PATHS" 'case "$file" in .mvn/*|.spi/*)' \
