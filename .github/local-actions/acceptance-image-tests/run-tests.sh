@@ -29,6 +29,7 @@ RESOLVER="$HERE/../../actions/acceptance-resolver/resolve.py"
 DOCKERFILE="$HERE/../../../build/acceptance.Dockerfile"
 ENTRYPOINT="$HERE/../../../build/acceptance-entrypoint.sh"
 SCRIPT_DOCKERFILE="$HERE/../../../build/script-acceptance.Dockerfile"
+SCRIPT_NODE24_DOCKERFILE="$HERE/../../../build/script-acceptance-node24.Dockerfile"
 SCRIPT_ENTRYPOINT="$HERE/../../../build/script-acceptance-entrypoint.js"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -121,7 +122,11 @@ resolve_suite "$WS2C" "$TMP/out2c-script.txt" SERVICE_NAME=demo >/dev/null
 [ "$(output_value "$TMP/out2c-script.txt" test_type)" = "script" ] || die "script type not exported"
 [ "$(output_value "$TMP/out2c-script.txt" node_version)" = "22" ] || die "Node version not exported"
 [ "$(output_value "$TMP/out2c-script.txt" buildable)" = "true" ] || die "script suite must be buildable"
-sed 's/nodeVersion: "22"/nodeVersion: "20"/' "$WS2C/.spi/service.yaml" > "$TMP/node20.yaml"
+sed 's/nodeVersion: "22"/nodeVersion: "24"/' "$WS2C/.spi/service.yaml" > "$TMP/node24.yaml"
+mv "$TMP/node24.yaml" "$WS2C/.spi/service.yaml"
+resolve_suite "$WS2C" "$TMP/out2c-node24.txt" SERVICE_NAME=demo >/dev/null
+[ "$(output_value "$TMP/out2c-node24.txt" node_version)" = "24" ] || die "Node 24 version not exported"
+sed 's/nodeVersion: "24"/nodeVersion: "20"/' "$WS2C/.spi/service.yaml" > "$TMP/node20.yaml"
 mv "$TMP/node20.yaml" "$WS2C/.spi/service.yaml"
 RC=0
 resolve_suite "$WS2C" "$TMP/out2c-node20.txt" SERVICE_NAME=demo >/dev/null 2>&1 || RC=$?
@@ -250,6 +255,10 @@ grep -q 'npm --prefix "/suite/$dir" ci' "$SCRIPT_DOCKERFILE" || die "script imag
 grep -q 'script-acceptance-entrypoint.js' "$SCRIPT_DOCKERFILE" || die "script entrypoint not baked"
 grep -q '^USER node$' "$SCRIPT_DOCKERFILE" || die "script image must not run suites as root"
 grep -q "test_type == 'script'" "$HERE/../../actions/acceptance-image/action.yml" || die "action does not select the script Dockerfile"
+grep -q "node_version == '24'" "$HERE/../../actions/acceptance-image/action.yml" || die "action does not select the Node 24 Dockerfile"
+grep -q '^FROM docker.io/library/node:24-bookworm-slim@sha256:' "$SCRIPT_NODE24_DOCKERFILE" || die "Node 24 image must be digest-pinned"
+grep -q '^ARG NPM_VERSION=11.19.0$' "$SCRIPT_NODE24_DOCKERFILE" || die "Node 24 image must pin npm 11.19.0"
+grep -q '^USER node$' "$SCRIPT_NODE24_DOCKERFILE" || die "Node 24 image must not run suites as root"
 ok "script Dockerfile contract"
 
 note "verdict: reports decide, not the exit code or the console"

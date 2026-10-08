@@ -49,9 +49,9 @@ is exactly `${NAME}`. It never evaluates a shell command string. The verdict
 uses the declared JUnit globs and applies the same nonzero-exit, no-failures,
 and tests-executed rules as Maven suites.
 
-All suites in one acceptance image must use one runtime type. The initial
-script image is pinned to Node 22; a different declared Node major halts image
-resolution instead of silently running tests on the wrong runtime.
+All suites in one acceptance image must use one runtime type. Script images
+are pinned separately to Node 22 and Node 24; any other declared Node major
+halts image resolution instead of silently running tests on the wrong runtime.
 
 ## Consequences
 
