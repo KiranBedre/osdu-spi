@@ -145,6 +145,10 @@ jobs:
           assert_yq '.on.pull_request_target | has("paths-ignore") | not' "$VALIDATE" \
             "pull_request_target owns sync PRs and must stay unfiltered"
 
+          DOCKER_PUSH_IF=$(yq -r '.jobs."docker-push".if' "$VALIDATE")
+          assert_contains "$DOCKER_PUSH_IF" 'always()' \
+            "docker-push must evaluate after an irrelevant language build is skipped"
+
           CHECK_PATHS=$(yq -r '.jobs."check-paths".steps[] | select(.id == "filter") | .run' "$VALIDATE")
           assert_contains "$CHECK_PATHS" 'case "$file" in .mvn/*|.spi/*)' \
             ".mvn and .spi changes must always run full validation"
