@@ -12,11 +12,13 @@ RUN set -eu; mkdir -p /suite; \
 FROM docker.io/library/node:22-bookworm-slim@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392
 
 ARG SUITE_DIRS
+ARG NPM_VERSION=11.19.0
 WORKDIR /suite
 COPY --from=select /suite/ /suite/
 COPY --chmod=0755 build/script-acceptance-entrypoint.js /usr/local/bin/script-acceptance-entrypoint.js
 
 RUN set -eu; \
+    npm install --global "npm@${NPM_VERSION}"; \
     for dir in ${SUITE_DIRS:?SUITE_DIRS build-arg is required}; do \
       if [ -f "/suite/$dir/package-lock.json" ] || [ -f "/suite/$dir/npm-shrinkwrap.json" ]; then \
         npm --prefix "/suite/$dir" ci; \

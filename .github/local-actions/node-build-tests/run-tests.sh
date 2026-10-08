@@ -55,6 +55,7 @@ export NPM_LOG="$TMP/npm.log"
 (cd "$TMP/work" && PATH="$TMP/bin:$PATH" "$ACTION/run-build.sh")
 
 cat > "$TMP/expected.log" <<'EOF'
+install --global npm@11.19.0
 ci
 run lint
 run build
