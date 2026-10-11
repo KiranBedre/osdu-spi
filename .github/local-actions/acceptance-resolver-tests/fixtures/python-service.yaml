@@ -1,0 +1,18 @@
+schemaVersion: 4
+service:
+  name: rafs
+  archetype: python-fastapi-azure
+  sourcePath: "."
+  pythonVersion: "3.11"
+  image:
+    context: "."
+    dockerfile: Dockerfile
+tests:
+  acceptance:
+    type: script
+    path: tests
+    entrypoint: integration/run_spi.sh
+    arguments: ["--base-url", "${DDMS_BASE_URL}"]
+    reportPaths: ["results/*.xml"]
+    bindings:
+      DDMS_BASE_URL: { source: gateway, suffix: /api/rafs-ddms }

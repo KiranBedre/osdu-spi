@@ -587,6 +587,28 @@ expect_fail "script placeholders occupy a complete argv token" 2 "entire argv to
   engine --contract-only --descriptor "$TMP/node-embedded-argument.yaml"
 ok "schema v4 Node and script contract"
 
+note "schema v4: Python service metadata and root source paths"
+PYTHON="$FIXTURES/python-service.yaml"
+engine --contract-only --descriptor "$PYTHON" --report "$TMP/python.json" >/dev/null 2>&1 \
+  || die "schema v4 Python descriptor must validate"
+[ "$(report_field "$TMP/python.json" "r['service_config']['archetype']")" = "python-fastapi-azure" ] \
+  || die "Python archetype missing from report"
+[ "$(report_field "$TMP/python.json" "r['service_config']['source_path']")" = "." ] \
+  || die "Python root source path missing from report"
+[ "$(report_field "$TMP/python.json" "r['service_config']['python_version']")" = "3.11" ] \
+  || die "Python version missing from report"
+[ "$(report_field "$TMP/python.json" "r['service_config']['node_version']")" = "" ] \
+  || die "Python service must not publish a Node version"
+[ "$(report_field "$TMP/python.json" "r['service_config']['image']['context']")" = "." ] \
+  || die "Python root image context missing from report"
+sed 's/schemaVersion: 4/schemaVersion: 3/' "$PYTHON" > "$TMP/python-v3.yaml"
+expect_fail "schema v3 refuses the Python archetype" 2 "must be java-maven-azure in schemaVersion 3" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/python-v3.yaml"
+sed '/  pythonVersion:/a\  nodeVersion: \"22\"' "$PYTHON" > "$TMP/python-node-version.yaml"
+expect_fail "Python refuses a Node version" 2 "nodeVersion is not valid for python-fastapi-azure" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/python-node-version.yaml"
+ok "schema v4 Python contract"
+
 note "token: the caller's bearer arrives as RESOLVER_TOKEN, never as a default"
 variant "$TMP/token.yaml" "TESTER_TOKEN: { source: user }" "TESTER_TOKEN: { source: token }"
 ENV_TOK="$TMP/token.env"
@@ -654,7 +676,9 @@ python3 -c "
 import json
 schema = json.load(open('$SCHEMA'))
 assert schema['properties']['schemaVersion']['enum'] == [3, 4]
-assert schema['properties']['service']['properties']['archetype']['enum'] == ['java-maven-azure', 'node-typescript-azure']
+assert schema['properties']['service']['properties']['archetype']['enum'] == [
+    'java-maven-azure', 'node-typescript-azure', 'python-fastapi-azure'
+]
 assert 'keyvault:' in schema['\$defs']['binding']['properties']['source']['pattern']
 "
 ok "service-descriptor.schema.json consistent"

@@ -43,7 +43,10 @@ tests:
 
 `<service>` stands for the service's name; the suite paths, module names, and variable names come from the suites in the repository, not from the descriptor. The sources are the part that's fixed.
 
-`service.name` is the name the stack uses for the service: the `<service>` argument given to `spi onboard`, such as `partition`. The deploy lane pins, verifies, and restores under this name. It is independent of the image and GHCR package name, which is the `SERVICE_NAME` repository variable when set and the repository name otherwise, so `Azure/osdu-spi-partition` and `danielscholl-osdu/partition` both declare `partition`. `archetype` is always `java-maven-azure`.
+`service.name` is the name the stack uses for the service: the `<service>` argument given to `spi onboard`, such as `partition`. The deploy lane pins, verifies, and restores under this name. It is independent of the image and GHCR package name, which is the `SERVICE_NAME` repository variable when set and the repository name otherwise, so `Azure/osdu-spi-partition` and `danielscholl-osdu/partition` both declare `partition`.
+
+Schema version 3 uses `java-maven-azure`. Schema version 4 also supports
+`node-typescript-azure` and `python-fastapi-azure`.
 
 `tests` is a map of suites. `acceptance` is required, and it's the suite the image runs when no other is selected. Suite names are lowercase slugs. Every suite has the same fields:
 
@@ -56,6 +59,42 @@ tests:
 | `bindings` | The environment variables the suite reads, each bound to a source from the table below |
 | `keyVaultBindings` | Variable name to Key Vault secret name, for values that must never be in the file. The resolver validates it, but the lane doesn't supply these values yet |
 | `requires`, `dependencies` | Seeded data loads, entitlement groups, and other services the suite depends on. The resolver validates them, but the gate doesn't enforce them yet |
+
+## Python/FastAPI services
+
+A requirements-based FastAPI service uses schema version 4:
+
+```yaml
+schemaVersion: 4
+service:
+  name: rafs
+  archetype: python-fastapi-azure
+  sourcePath: "."
+  pythonVersion: "3.11"
+  image:
+    context: "."
+    dockerfile: Dockerfile
+tests:
+  acceptance:
+    type: script
+    path: tests
+    entrypoint: integration/run_spi.sh
+    arguments:
+      - --ddms-base-url
+      - ${DDMS_BASE_URL}
+    reportPaths: [results/*.xml]
+    bindings:
+      DDMS_BASE_URL: { source: gateway }
+```
+
+The repository owns `.spi/ci/build.sh`. The Python build action installs
+`requirements.txt` and `requirements-tests.in`, then runs that script. It must
+write `.spi/results/test-results.xml` and `.spi/results/coverage.xml`.
+
+The Python acceptance image includes the complete repository because pytest
+suites commonly import application modules outside their test directory. It
+still runs from `tests.<name>.path`, invokes the declared entrypoint directly,
+and copies only that suite directory back for verdict processing.
 
 ## Single-module and reactor suites
 
