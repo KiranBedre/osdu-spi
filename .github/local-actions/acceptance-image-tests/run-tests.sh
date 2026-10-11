@@ -261,6 +261,9 @@ OUT="$(SUITE_ROOT="$SCRIPT_IMG/suite" SUITE_ENTRYPOINT=tests/run.sh URL='https:/
   node "$SCRIPT_ENTRYPOINT" '--url' '${URL}' 'literal;not-shell')"
 EXPECTED=$'--url\nhttps://example.test/a b\nliteral;not-shell'
 [[ "$OUT" == "$EXPECTED" ]] || die "script argv expansion changed token boundaries: $OUT"
+OUT="$(SUITE_ROOT="$SCRIPT_IMG/suite" SUITE_DIR=. SUITE_ENTRYPOINT=app/service/tests/run.sh \
+  node "$SCRIPT_ENTRYPOINT" root)"
+[[ "$OUT" == "root" ]] || die "repository-root Node script suite was rejected: $OUT"
 RC=0
 SUITE_ROOT="$SCRIPT_IMG/suite" SUITE_ENTRYPOINT=tests/run.sh \
   node "$SCRIPT_ENTRYPOINT" '${MISSING}' >/dev/null 2>&1 || RC=$?
@@ -292,6 +295,9 @@ chmod +x "$PYTHON_IMG/suite/tests/integration/run.sh"
 OUT="$(SUITE_ROOT="$PYTHON_IMG/suite" SUITE_ENTRYPOINT=integration/run.sh URL='https://example.test/a b' \
   python3 "$PYTHON_ENTRYPOINT" '--url' '${URL}' 'literal;not-shell')"
 [[ "$OUT" == "$EXPECTED" ]] || die "Python argv expansion changed token boundaries: $OUT"
+OUT="$(SUITE_ROOT="$PYTHON_IMG/suite" SUITE_DIR=. SUITE_ENTRYPOINT=tests/integration/run.sh \
+  python3 "$PYTHON_ENTRYPOINT" root)"
+[[ "$OUT" == "root" ]] || die "repository-root Python script suite was rejected: $OUT"
 RC=0
 SUITE_ROOT="$PYTHON_IMG/suite" SUITE_ENTRYPOINT=integration/run.sh \
   python3 "$PYTHON_ENTRYPOINT" '${MISSING}' >/dev/null 2>&1 || RC=$?
