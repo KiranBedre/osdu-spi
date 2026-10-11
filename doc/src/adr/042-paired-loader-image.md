@@ -8,7 +8,7 @@ Accepted (2026-09-22)
 
 The stack seeds the data an environment configures for itself: partitions, entitlement groups, legal tags. The OSDU shared schemas are different. They are versioned with the schema service source under `deployments/shared-schemas/`, and the stack's `schema-load` Job registers them with upstream's `DeploySharedSchemas.py`, paired to the schema service's commit (stack ADR-017). That loader image is built today by upstream's Azure-only CI job, which upstream is removing. Stack ADR-033 already names a fork-built `ghcr.io/<owner>/schema-load` at the schema commit as the precondition for promoting schema to a fork canonical; nothing in the template produced one.
 
-Schema is the only service that carries such a payload. Whatever builds it must reach the schema fork through template sync (ADR-037) without adding a workflow, job, secret, variable, or required check to the other forks.
+Schema is the only service that carries this payload and its provider-neutral loader. Other DDMS repositories may use `deployments/shared-schemas/` for unrelated schema assets. Whatever builds the paired image must reach the schema fork through template sync (ADR-037) without adding a workflow, job, secret, variable, or required check to the other forks.
 
 ## Decision
 
@@ -24,7 +24,7 @@ The schema fork flips `deployments: strip` to `keep` in its filter config (ADR-0
 
 ### One step in the two image jobs
 
-`.github/actions/load-image` follows the acceptance-image action. Its first step resolves the payload and every later step is conditional on it: no payload is exit 0 with a reason, a payload whose loader file is missing is exit 2 naming the file. The image is `ghcr.io/<owner>/<service>-load`, named, tagged, and visibility-checked with the service image's scripts, pushed only from `docker-push` under the ADR-036 gate. `release.yml` retags it at the semver after the acceptance image, and `ghcr-retention.yml` prunes the service, acceptance, and load packages under one policy so the images built from one commit age out together.
+`.github/actions/load-image` follows the acceptance-image action. Its first step resolves the payload and every later step is conditional on it: no payload or no `DeploySharedSchemas.py` entrypoint is exit 0 with a reason, while an entrypoint whose companion loader file is missing is exit 2 naming the file. The image is `ghcr.io/<owner>/<service>-load`, named, tagged, and visibility-checked with the service image's scripts, pushed only from `docker-push` under the ADR-036 gate. `release.yml` retags it at the semver after the acceptance image, and `ghcr-retention.yml` prunes the service, acceptance, and load packages under one policy so the images built from one commit age out together.
 
 ### The stack pairs by commit
 

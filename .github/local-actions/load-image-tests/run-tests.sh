@@ -72,8 +72,16 @@ resolve "$WS2" "$TMP/out2.txt" >/dev/null
 [ "$(output_value "$TMP/out2.txt" reason)" = "" ] || die "a buildable payload carries no skip reason"
 ok "payload resolved"
 
-note "halt: payload present but a loader file missing names the file"
-for missing in DeploySharedSchemas.py Utility.py requirements.txt; do
+note "clean skip: an unrelated shared-schemas directory has no schema loader"
+WS3="$TMP/ws-unrelated-payload"
+mkdir -p "$WS3/deployments/shared-schemas"
+resolve "$WS3" "$TMP/out3.txt" >/dev/null
+[ "$(output_value "$TMP/out3.txt" buildable)" = "false" ] || die "payload without the schema loader must not be buildable"
+output_value "$TMP/out3.txt" reason | grep -q "DeploySharedSchemas.py" || die "skip reason must name the absent loader"
+ok "unrelated payload skipped with reason"
+
+note "halt: loader entrypoint present but a companion file missing names the file"
+for missing in Utility.py requirements.txt; do
   WS3="$TMP/ws-missing-$missing"
   mkdir -p "$WS3/deployments/shared-schemas"
   plant_loader "$WS3"
