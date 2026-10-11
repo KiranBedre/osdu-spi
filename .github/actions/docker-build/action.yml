@@ -14,7 +14,7 @@ inputs:
     required: false
     default: '.'
   build_kind:
-    description: 'maven-jar resolves a JAR, source restores a Node runtime, and artifact uses a downloaded runtime artifact as the complete context'
+    description: 'maven-jar resolves a JAR, source restores a Node runtime, source-direct builds the checked-in context, and artifact uses a downloaded runtime artifact as the complete context'
     required: false
     default: 'maven-jar'
   registry:
@@ -66,8 +66,8 @@ runs:
         BUILD_KIND: ${{ inputs.build_kind }}
       run: |
         case "$BUILD_KIND" in
-          maven-jar|source|artifact) ;;
-          *) echo "::error::build_kind must be maven-jar, source, or artifact"; exit 2 ;;
+          maven-jar|source|source-direct|artifact) ;;
+          *) echo "::error::build_kind must be maven-jar, source, source-direct, or artifact"; exit 2 ;;
         esac
 
     - name: "Validate push prerequisites"

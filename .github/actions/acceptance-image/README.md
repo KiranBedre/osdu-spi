@@ -45,14 +45,18 @@ a descriptor path is an assertion the fork made, and a typo in it must never
 read as "this fork has no acceptance suite".
 
 All suites in one image use the same runtime type. Maven suites use
-`build/acceptance.Dockerfile`. Schema v4 `script` suites use
-the Node 22 `build/script-acceptance.Dockerfile` or the Node 24
+`build/acceptance.Dockerfile`. Schema v4 Node `script` suites use the Node 22
+`build/script-acceptance.Dockerfile` or the Node 24
 `build/script-acceptance-node24.Dockerfile`, matching the descriptor's
-`nodeVersion`. Resolution halts for another Node major rather than silently
-running it on the wrong runtime. The image installs locked npm dependencies
-and invokes the declared repository-relative entrypoint directly. Script
-arguments remain argv tokens; the entrypoint expands only exact `${NAME}`
-references from the resolver-produced environment.
+`nodeVersion`. Python/FastAPI script suites use
+`build/script-acceptance-python.Dockerfile`, which installs the root runtime
+and test requirement files and carries the application source needed by
+pytest. Resolution halts for an unsupported runtime rather than silently
+running tests on the wrong one.
+
+Each script image invokes the declared repository-relative entrypoint
+directly. Script arguments remain argv tokens; the entrypoint expands only
+exact `${NAME}` references from the resolver-produced environment.
 
 ## Suite verdict
 

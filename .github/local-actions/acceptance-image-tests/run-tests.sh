@@ -31,6 +31,8 @@ ENTRYPOINT="$HERE/../../../build/acceptance-entrypoint.sh"
 SCRIPT_DOCKERFILE="$HERE/../../../build/script-acceptance.Dockerfile"
 SCRIPT_NODE24_DOCKERFILE="$HERE/../../../build/script-acceptance-node24.Dockerfile"
 SCRIPT_ENTRYPOINT="$HERE/../../../build/script-acceptance-entrypoint.js"
+PYTHON_DOCKERFILE="$HERE/../../../build/script-acceptance-python.Dockerfile"
+PYTHON_ENTRYPOINT="$HERE/../../../build/script-acceptance-entrypoint.py"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -132,6 +134,37 @@ RC=0
 resolve_suite "$WS2C" "$TMP/out2c-node20.txt" SERVICE_NAME=demo >/dev/null 2>&1 || RC=$?
 [ "$RC" -eq 2 ] || die "an unsupported script-suite Node version must halt"
 ok "script suite metadata resolved"
+
+note "Python script descriptor: Python runtime metadata reaches the image action"
+WS2D="$TMP/ws-python"
+mkdir -p "$WS2D/.spi" "$WS2D/tests/integration"
+cat > "$WS2D/.spi/service.yaml" <<'EOF'
+schemaVersion: 4
+service:
+  name: rafs
+  archetype: python-fastapi-azure
+  sourcePath: "."
+  pythonVersion: "3.11"
+  image:
+    context: "."
+    dockerfile: Dockerfile
+tests:
+  acceptance:
+    type: script
+    path: tests
+    entrypoint: integration/run_spi.sh
+    reportPaths: ["results/*.xml"]
+EOF
+resolve_suite "$WS2D" "$TMP/out2d-python.txt" SERVICE_NAME=rafs >/dev/null
+[ "$(output_value "$TMP/out2d-python.txt" archetype)" = "python-fastapi-azure" ] || die "Python archetype not exported"
+[ "$(output_value "$TMP/out2d-python.txt" python_version)" = "3.11" ] || die "Python version not exported"
+[ "$(output_value "$TMP/out2d-python.txt" test_type)" = "script" ] || die "Python suite must remain a script"
+sed 's/pythonVersion: "3.11"/pythonVersion: "3.12"/' "$WS2D/.spi/service.yaml" > "$TMP/python312.yaml"
+mv "$TMP/python312.yaml" "$WS2D/.spi/service.yaml"
+RC=0
+resolve_suite "$WS2D" "$TMP/out2d-python312.txt" SERVICE_NAME=rafs >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 2 ] || die "an unsupported Python acceptance version must halt"
+ok "Python script suite metadata resolved"
 
 note "clean skip: an absent suite directory is not an error"
 WS3="$TMP/ws-absent"
@@ -246,6 +279,24 @@ SUITE_ROOT="$SCRIPT_IMG/suite" SUITE_ENTRYPOINT=tests/outside \
 [ "$RC" -eq 2 ] || die "an escaping entrypoint symlink must exit 2"
 ok "script entrypoint keeps argv data-only"
 
+note "Python script entrypoint: expands argv without shell evaluation"
+PYTHON_IMG="$TMP/python-image"
+mkdir -p "$PYTHON_IMG/suite/tests/integration"
+printf 'tests' > "$PYTHON_IMG/suite/.default-suite-dir"
+cat > "$PYTHON_IMG/suite/tests/integration/run.sh" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$@"
+EOF
+chmod +x "$PYTHON_IMG/suite/tests/integration/run.sh"
+OUT="$(SUITE_ROOT="$PYTHON_IMG/suite" SUITE_ENTRYPOINT=integration/run.sh URL='https://example.test/a b' \
+  python3 "$PYTHON_ENTRYPOINT" '--url' '${URL}' 'literal;not-shell')"
+[[ "$OUT" == "$EXPECTED" ]] || die "Python argv expansion changed token boundaries: $OUT"
+RC=0
+SUITE_ROOT="$PYTHON_IMG/suite" SUITE_ENTRYPOINT=integration/run.sh \
+  python3 "$PYTHON_ENTRYPOINT" '${MISSING}' >/dev/null 2>&1 || RC=$?
+[ "$RC" -eq 2 ] || die "Python entrypoint must reject an unresolved argument"
+ok "Python script entrypoint keeps argv data-only"
+
 note "script Dockerfile: only declared suites are copied and locked dependencies are installed"
 grep -q '^ARG SUITE_DIRS$' "$SCRIPT_DOCKERFILE" || die "script image SUITE_DIRS build arg missing"
 grep -q '^ARG NPM_VERSION=11.19.0$' "$SCRIPT_DOCKERFILE" || die "script image must pin npm 11.19.0"
@@ -259,6 +310,13 @@ grep -q "node_version == '24'" "$HERE/../../actions/acceptance-image/action.yml"
 grep -q '^FROM docker.io/library/node:24-bookworm-slim@sha256:' "$SCRIPT_NODE24_DOCKERFILE" || die "Node 24 image must be digest-pinned"
 grep -q '^ARG NPM_VERSION=11.19.0$' "$SCRIPT_NODE24_DOCKERFILE" || die "Node 24 image must pin npm 11.19.0"
 grep -q '^USER node$' "$SCRIPT_NODE24_DOCKERFILE" || die "Node 24 image must not run suites as root"
+grep -q '^FROM docker.io/library/python:3.11-bookworm@sha256:' "$PYTHON_DOCKERFILE" || die "Python image must be digest-pinned"
+grep -q 'python -m pip install --no-cache-dir -c requirements.txt -r requirements-tests.in' "$PYTHON_DOCKERFILE" \
+  || die "Python image must preinstall constrained test dependencies"
+grep -q 'script-acceptance-entrypoint.py' "$PYTHON_DOCKERFILE" || die "Python entrypoint not baked"
+grep -q '^USER runner$' "$PYTHON_DOCKERFILE" || die "Python image must not run suites as root"
+grep -q "archetype == 'python-fastapi-azure'" "$HERE/../../actions/acceptance-image/action.yml" \
+  || die "action does not select the Python Dockerfile"
 ok "script Dockerfile contract"
 
 note "verdict: reports decide, not the exit code or the console"
