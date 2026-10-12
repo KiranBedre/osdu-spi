@@ -50,6 +50,12 @@ RC=0
 grep -q 'maven-jar|source|source-direct|artifact' \
   "$HERE/../../actions/docker-build/action.yml" \
   || die "docker-build must accept direct Python source"
+grep -q 'id: source-metadata' "$HERE/../../actions/docker-build/action.yml" \
+  || die "direct source builds must compute image metadata"
+grep -q 'echo "build_date=' "$HERE/../../actions/docker-build/action.yml" \
+  || die "direct source builds must pass build_date"
+grep -q 'echo "commit_id=' "$HERE/../../actions/docker-build/action.yml" \
+  || die "direct source builds must pass commit_id"
 grep -q "'source-direct'" "$HERE/../../template-workflows/validate.yml" \
   || die "validation workflow must select direct Python source"
 
