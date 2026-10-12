@@ -56,6 +56,12 @@ grep -q 'echo "build_date=' "$HERE/../../actions/docker-build/action.yml" \
   || die "direct source builds must pass build_date"
 grep -q 'echo "commit_id=' "$HERE/../../actions/docker-build/action.yml" \
   || die "direct source builds must pass commit_id"
+grep -q 'echo "commit_branch=' "$HERE/../../actions/docker-build/action.yml" \
+  || die "direct source builds must pass commit_branch"
+grep -q 'echo "commit_message=' "$HERE/../../actions/docker-build/action.yml" \
+  || die "direct source builds must pass commit_message"
+grep -q 'echo "release_version=' "$HERE/../../actions/docker-build/action.yml" \
+  || die "direct source builds must pass release_version"
 grep -q "'source-direct'" "$HERE/../../template-workflows/validate.yml" \
   || die "validation workflow must select direct Python source"
 
