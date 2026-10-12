@@ -219,7 +219,7 @@ jobs:
           # The deploy lane inherits docker-push's trust and never enters the pull_request_target lane.
           assert_yq '.jobs."deploy-test".needs | contains(["docker-push", "deploy-gate"])' "$VALIDATE" \
             "deploy-test must chain on docker-push and the deploy gate"
-          assert_yq '.jobs."deploy-test".if == "needs.deploy-gate.outputs.run == '"'"'true'"'"'"' "$VALIDATE" \
+          assert_yq '.jobs."deploy-test".if == "always() && needs.deploy-gate.outputs.run == '"'"'true'"'"'"' "$VALIDATE" \
             "deploy-test must run only when the gate decided to borrow"
 
           # The stack service is the descriptor's service.name (#221); the image name (SERVICE_NAME,
