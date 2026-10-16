@@ -35,6 +35,9 @@ jobs:
       source_path: ${{ steps.check_service.outputs.source_path }}
       node_version: ${{ steps.check_service.outputs.node_version }}
       python_version: ${{ steps.check_service.outputs.python_version }}
+      airflow_version: ${{ steps.check_service.outputs.airflow_version }}
+      dag_path: ${{ steps.check_service.outputs.dag_path }}
+      dag_id: ${{ steps.check_service.outputs.dag_id }}
       image_context: ${{ steps.check_service.outputs.image_context }}
       image_dockerfile: ${{ steps.check_service.outputs.image_dockerfile }}
       closed: ${{ steps.close.outputs.closed }}
@@ -88,6 +91,9 @@ jobs:
               "source_path=\(.service_config.source_path)",
               "node_version=\(.service_config.node_version)",
               "python_version=\(.service_config.python_version)",
+              "airflow_version=\(.service_config.airflow_version)",
+              "dag_path=\(.service_config.dag_path)",
+              "dag_id=\(.service_config.dag_id)",
               "image_context=\(.service_config.image.context)",
               "image_dockerfile=\(.service_config.image.dockerfile)"
             ' "$RUNNER_TEMP/service.json" >> "$GITHUB_OUTPUT"
@@ -96,6 +102,9 @@ jobs:
             echo "source_path=." >> "$GITHUB_OUTPUT"
             echo "node_version=" >> "$GITHUB_OUTPUT"
             echo "python_version=" >> "$GITHUB_OUTPUT"
+            echo "airflow_version=" >> "$GITHUB_OUTPUT"
+            echo "dag_path=" >> "$GITHUB_OUTPUT"
+            echo "dag_id=" >> "$GITHUB_OUTPUT"
             echo "image_context=." >> "$GITHUB_OUTPUT"
             echo "image_dockerfile=build/Dockerfile" >> "$GITHUB_OUTPUT"
           fi
@@ -162,7 +171,10 @@ jobs:
   python-build:
     name: "Dependabot Python Build Validation"
     needs: check-repo-state
-    if: needs.check-repo-state.outputs.archetype == 'python-fastapi-azure' && needs.check-repo-state.outputs.closed != 'true'
+    if: |
+      (needs.check-repo-state.outputs.archetype == 'python-fastapi-azure' ||
+       needs.check-repo-state.outputs.archetype == 'airflow-dag-azure') &&
+      needs.check-repo-state.outputs.closed != 'true'
     runs-on: ubuntu-latest
     outputs:
       build_result: ${{ steps.build.outputs.build_result }}
@@ -175,6 +187,9 @@ jobs:
         with:
           working_directory: ${{ needs.check-repo-state.outputs.source_path }}
           python_version: ${{ needs.check-repo-state.outputs.python_version }}
+          airflow_version: ${{ needs.check-repo-state.outputs.airflow_version }}
+          dag_path: ${{ needs.check-repo-state.outputs.dag_path }}
+          dag_id: ${{ needs.check-repo-state.outputs.dag_id }}
 
   docker-build:
     # The name must differ from validate.yml's "Docker Build", which also reports on these

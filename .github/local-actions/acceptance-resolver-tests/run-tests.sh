@@ -609,6 +609,31 @@ expect_fail "Python refuses a Node version" 2 "nodeVersion is not valid for pyth
   engine --contract-only --descriptor "$TMP/python-node-version.yaml"
 ok "schema v4 Python contract"
 
+note "schema v4: Airflow DAG metadata"
+AIRFLOW="$FIXTURES/airflow-service.yaml"
+engine --contract-only --descriptor "$AIRFLOW" --report "$TMP/airflow.json" >/dev/null 2>&1 \
+  || die "schema v4 Airflow descriptor must validate"
+[ "$(report_field "$TMP/airflow.json" "r['service_config']['archetype']")" = "airflow-dag-azure" ] \
+  || die "Airflow archetype missing from report"
+[ "$(report_field "$TMP/airflow.json" "r['service_config']['python_version']")" = "3.12" ] \
+  || die "Airflow Python version missing from report"
+[ "$(report_field "$TMP/airflow.json" "r['service_config']['airflow_version']")" = "3.2.2" ] \
+  || die "Airflow version missing from report"
+[ "$(report_field "$TMP/airflow.json" "r['service_config']['dag_path']")" = "src/dags/segy_to_vds_ssdms_conversion_dag.py" ] \
+  || die "Airflow DAG path missing from report"
+[ "$(report_field "$TMP/airflow.json" "r['service_config']['dag_id']")" = "segy_to_vds_ssdms_conversion" ] \
+  || die "Airflow DAG ID missing from report"
+sed '/  airflowVersion:/d' "$AIRFLOW" > "$TMP/airflow-no-version.yaml"
+expect_fail "Airflow requires an exact version" 2 "airflowVersion is required for airflow-dag-azure" "MISSING_KEY" \
+  engine --contract-only --descriptor "$TMP/airflow-no-version.yaml"
+sed 's#src/dags/segy_to_vds_ssdms_conversion_dag.py#src/../escape.py#' "$AIRFLOW" > "$TMP/airflow-escape.yaml"
+expect_fail "Airflow DAG paths stay inside the repository" 2 "dagPath must stay inside the repository" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/airflow-escape.yaml"
+sed '/  pythonVersion:/a\  nodeVersion: "22"' "$AIRFLOW" > "$TMP/airflow-node-version.yaml"
+expect_fail "Airflow refuses a Node version" 2 "nodeVersion is not valid for airflow-dag-azure" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/airflow-node-version.yaml"
+ok "schema v4 Airflow DAG contract"
+
 note "token: the caller's bearer arrives as RESOLVER_TOKEN, never as a default"
 variant "$TMP/token.yaml" "TESTER_TOKEN: { source: user }" "TESTER_TOKEN: { source: token }"
 ENV_TOK="$TMP/token.env"
@@ -677,7 +702,8 @@ import json
 schema = json.load(open('$SCHEMA'))
 assert schema['properties']['schemaVersion']['enum'] == [3, 4]
 assert schema['properties']['service']['properties']['archetype']['enum'] == [
-    'java-maven-azure', 'node-typescript-azure', 'python-fastapi-azure'
+    'java-maven-azure', 'node-typescript-azure', 'python-fastapi-azure',
+    'airflow-dag-azure'
 ]
 assert 'keyvault:' in schema['\$defs']['binding']['properties']['source']['pattern']
 "
