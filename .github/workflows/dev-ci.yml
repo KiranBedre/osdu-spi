@@ -17,7 +17,7 @@ jobs:
   upstream-filter-harness:
     name: Upstream Filter Harness
     runs-on: ubuntu-latest
-    if: github.repository == 'azure/osdu-spi'
+    if: github.event.repository.is_template == true
     permissions:
       contents: read
     steps:
@@ -63,7 +63,7 @@ jobs:
   validate:
     name: Validate Template
     runs-on: ubuntu-latest
-    if: github.repository == 'azure/osdu-spi'
+    if: github.event.repository.is_template == true
     permissions:
       contents: read
 
