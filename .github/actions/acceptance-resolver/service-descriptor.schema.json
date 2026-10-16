@@ -22,8 +22,8 @@
           "description": "Service slug, e.g. partition."
         },
         "archetype": {
-          "enum": ["java-maven-azure", "node-typescript-azure", "python-fastapi-azure", "airflow-dag-azure"],
-          "description": "Build/test archetype. Source-based Node, Python, and Airflow archetypes require schemaVersion 4."
+          "enum": ["java-maven-azure", "node-typescript-azure", "python-fastapi-azure", "airflow-dag-azure", "native-container-azure"],
+          "description": "Build/test archetype. Source-based Node, Python, Airflow, and native container archetypes require schemaVersion 4."
         },
         "description": {
           "type": "string",
@@ -73,7 +73,7 @@
               "pattern": "^(?:\\.spi/[A-Za-z0-9][A-Za-z0-9._/-]{0,119}|[A-Za-z0-9][A-Za-z0-9._/-]{0,119})$"
             }
           },
-          "description": "Source-based service image inputs. Required for Node and Python archetypes."
+          "description": "Source-based service image inputs. Required for Node, Python, Airflow, and native container archetypes."
         }
       },
       "allOf": [
@@ -112,6 +112,16 @@
               "dagId",
               "image"
             ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "archetype": { "const": "native-container-azure" }
+            }
+          },
+          "then": {
+            "required": ["sourcePath", "image"]
           }
         }
       ]

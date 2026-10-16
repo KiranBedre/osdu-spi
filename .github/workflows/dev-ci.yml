@@ -42,6 +42,9 @@ jobs:
       - name: Run Node build harness
         run: bash .github/local-actions/node-build-tests/run-tests.sh
 
+      - name: Run native container build harness
+        run: bash .github/local-actions/native-container-build-tests/run-tests.sh
+
       - name: Run load image harness
         run: bash .github/local-actions/load-image-tests/run-tests.sh
 

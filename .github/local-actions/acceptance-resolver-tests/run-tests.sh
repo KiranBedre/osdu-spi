@@ -634,6 +634,22 @@ expect_fail "Airflow refuses a Node version" 2 "nodeVersion is not valid for air
   engine --contract-only --descriptor "$TMP/airflow-node-version.yaml"
 ok "schema v4 Airflow DAG contract"
 
+note "schema v4: native container metadata"
+NATIVE="$FIXTURES/native-container-service.yaml"
+engine --contract-only --descriptor "$NATIVE" --report "$TMP/native.json" >/dev/null 2>&1 \
+  || die "schema v4 native container descriptor must validate"
+[ "$(report_field "$TMP/native.json" "r['service_config']['archetype']")" = "native-container-azure" ] \
+  || die "native container archetype missing from report"
+[ "$(report_field "$TMP/native.json" "r['service_config']['python_version']")" = "" ] \
+  || die "native container must not publish a Python version"
+[ "$(report_field "$TMP/native.json" "r['service_config']['image']['dockerfile']")" = ".spi/image/Dockerfile" ] \
+  || die "native container Dockerfile missing from report"
+sed '/  sourcePath:/a\  pythonVersion: "3.12"' "$NATIVE" > "$TMP/native-runtime.yaml"
+expect_fail "native container refuses a runtime version" 2 \
+  "pythonVersion is not valid for native-container-azure" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/native-runtime.yaml"
+ok "schema v4 native container contract"
+
 note "token: the caller's bearer arrives as RESOLVER_TOKEN, never as a default"
 variant "$TMP/token.yaml" "TESTER_TOKEN: { source: user }" "TESTER_TOKEN: { source: token }"
 ENV_TOK="$TMP/token.env"
@@ -703,7 +719,7 @@ schema = json.load(open('$SCHEMA'))
 assert schema['properties']['schemaVersion']['enum'] == [3, 4]
 assert schema['properties']['service']['properties']['archetype']['enum'] == [
     'java-maven-azure', 'node-typescript-azure', 'python-fastapi-azure',
-    'airflow-dag-azure'
+    'airflow-dag-azure', 'native-container-azure'
 ]
 assert 'keyvault:' in schema['\$defs']['binding']['properties']['source']['pattern']
 "

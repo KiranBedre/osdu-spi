@@ -191,16 +191,34 @@ jobs:
           dag_path: ${{ needs.check-repo-state.outputs.dag_path }}
           dag_id: ${{ needs.check-repo-state.outputs.dag_id }}
 
+  native-container-build:
+    name: "Dependabot Native Container Build Validation"
+    needs: check-repo-state
+    if: needs.check-repo-state.outputs.archetype == 'native-container-azure' && needs.check-repo-state.outputs.closed != 'true'
+    runs-on: ubuntu-latest
+    outputs:
+      build_result: ${{ steps.build.outputs.build_result }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+
+      - name: "Run Native Container Build"
+        id: build
+        uses: ./.github/actions/native-container-build
+        with:
+          build_context: ${{ needs.check-repo-state.outputs.image_context }}
+          dockerfile_path: ${{ needs.check-repo-state.outputs.image_dockerfile }}
+
   docker-build:
     # The name must differ from validate.yml's "Docker Build", which also reports on these
     # PRs. Advisory only: the required summary passes Dependabot through.
     name: "Dependabot Docker Build"
-    needs: [check-repo-state, java-build, node-build, python-build]
+    needs: [check-repo-state, java-build, node-build, python-build, native-container-build]
     if: |
       always() &&
       (needs.java-build.outputs.build_result == 'success' ||
        needs.node-build.outputs.build_result == 'success' ||
-       needs.python-build.outputs.build_result == 'success')
+       needs.python-build.outputs.build_result == 'success' ||
+       needs.native-container-build.outputs.build_result == 'success')
     runs-on: ubuntu-latest
     permissions:
       contents: read

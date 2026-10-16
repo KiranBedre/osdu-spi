@@ -441,6 +441,7 @@ def validate_descriptor(data, suite="acceptance"):
         "node-typescript-azure",
         "python-fastapi-azure",
         "airflow-dag-azure",
+        "native-container-azure",
     ):
         raise Halt("DESCRIPTOR_INVALID",
                    "descriptor.service.archetype must be java-maven-azure "
@@ -449,6 +450,7 @@ def validate_descriptor(data, suite="acceptance"):
         "node-typescript-azure",
         "python-fastapi-azure",
         "airflow-dag-azure",
+        "native-container-azure",
     ) and version != 4:
         raise Halt("DESCRIPTOR_INVALID",
                    f"{archetype} requires schemaVersion 4")
@@ -519,9 +521,13 @@ def _validate_service_config(service, archetype):
     where = "descriptor.service"
     is_node = archetype == "node-typescript-azure"
     is_airflow = archetype == "airflow-dag-azure"
+    is_native = archetype == "native-container-azure"
     version_key = "nodeVersion" if is_node else "pythonVersion"
-    disallowed = ["pythonVersion"] if is_node else ["nodeVersion"]
-    if not is_airflow:
+    if is_native:
+        disallowed = ["nodeVersion", "pythonVersion", "airflowVersion", "dagPath", "dagId"]
+    else:
+        disallowed = ["pythonVersion"] if is_node else ["nodeVersion"]
+    if not is_airflow and not is_native:
         disallowed.extend(("airflowVersion", "dagPath", "dagId"))
     for key in disallowed:
         if key in service:
@@ -529,7 +535,9 @@ def _validate_service_config(service, archetype):
                 "DESCRIPTOR_INVALID",
                 f"{where}.{key} is not valid for {archetype}",
             )
-    required = ["sourcePath", version_key, "image"]
+    required = ["sourcePath", "image"]
+    if not is_native:
+        required.append(version_key)
     if is_airflow:
         required.extend(("airflowVersion", "dagPath", "dagId"))
     for key in required:
@@ -542,7 +550,7 @@ def _validate_service_config(service, archetype):
     python_version = ""
     if is_node:
         node_version = _string_field(service, "nodeVersion", where, RUNTIME_VERSION_RE)
-    else:
+    elif not is_native:
         python_version = _string_field(service, "pythonVersion", where, PYTHON_VERSION_RE)
     airflow_version = ""
     dag_path = ""
