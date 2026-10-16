@@ -311,8 +311,8 @@ jobs:
             "A Dependabot bump that edits upstream-owned files must be closed, not left red"
           assert_yq '.jobs."java-build".if | contains("closed != '"'"'true'"'"'")' "$DEPENDABOT" \
             "The Dependabot build must not run for a closed bump"
-          assert_yq '.jobs."docker-build".needs == "java-build"' "$DEPENDABOT" \
-            "Dependabot Docker validation must consume its Java build"
+          assert_yq '.jobs."docker-build".needs | contains(["check-repo-state", "java-build", "node-build", "python-build", "native-container-build"])' "$DEPENDABOT" \
+            "Dependabot Docker validation must consume every archetype build"
           assert_yq '.jobs."docker-build".name | contains("Dependabot")' "$DEPENDABOT" \
             "Dependabot Docker validation needs a check name distinct from validate.yml's"
           assert_yq '.jobs."docker-build".steps[] | select(.name == "Docker Build (validate-only)") | .with.push == "false"' "$DEPENDABOT" \
