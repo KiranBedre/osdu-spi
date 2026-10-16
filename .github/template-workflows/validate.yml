@@ -426,6 +426,40 @@ jobs:
           dag_path: ${{ needs.check-repo-state.outputs.dag_path }}
           dag_id: ${{ needs.check-repo-state.outputs.dag_id }}
 
+  native-container-build:
+    name: "Native Container Build"
+    needs: [check-initialization, check-repo-state, check-paths]
+    if: |
+      needs.check-repo-state.outputs.is_initialized == 'true' &&
+      needs.check-repo-state.outputs.archetype == 'native-container-azure' &&
+      needs.check-paths.outputs.should_run == 'true' &&
+      github.actor != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    outputs:
+      build_result: ${{ steps.build.outputs.build_result }}
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: "Restore local actions for sync PRs"
+        if: |
+          github.event_name == 'pull_request_target' &&
+          github.event.pull_request.base.ref == 'fork_upstream' &&
+          startsWith(github.event.pull_request.head.ref, 'sync/')
+        run: |
+          set -euo pipefail
+          git fetch origin main --depth=1
+          git checkout origin/main -- .github/actions/
+
+      - name: "Run Native Container Build"
+        id: build
+        uses: ./.github/actions/native-container-build
+        with:
+          build_context: ${{ needs.check-repo-state.outputs.image_context }}
+          dockerfile_path: ${{ needs.check-repo-state.outputs.image_dockerfile }}
+
   docker-build:
     # Validate-only build of both images; the trusted push is docker-push and the required check
     # is the summary job at the end.
@@ -433,12 +467,13 @@ jobs:
     # No pull_request_target lane and no checkout ref: a PR-head ref in a read-only job is a CodeQL
     # cache-poisoning finding in every fork (#164). Sync PRs get their image validated on the cascade PR.
     name: "Docker Build"
-    needs: [check-initialization, check-repo-state, java-build, node-build, python-build]
+    needs: [check-initialization, check-repo-state, java-build, node-build, python-build, native-container-build]
     if: |
       always() &&
       (needs.java-build.outputs.build_result == 'success' ||
        needs.node-build.outputs.build_result == 'success' ||
-       needs.python-build.outputs.build_result == 'success') &&
+       needs.python-build.outputs.build_result == 'success' ||
+       needs.native-container-build.outputs.build_result == 'success') &&
       github.event_name != 'pull_request_target' &&
       (vars.SYNC_MODE == 'mirror' || vars.SYNC_MODE == 'passthrough' ||
        (github.base_ref != 'fork_upstream' && github.ref_name != 'fork_upstream'))
@@ -476,13 +511,14 @@ jobs:
 
   docker-push:
     name: "Docker Push"
-    needs: [check-initialization, check-repo-state, java-build, node-build, python-build, docker-build]
+    needs: [check-initialization, check-repo-state, java-build, node-build, python-build, native-container-build, docker-build]
     # Trust boundary (ADR-036): push to GHCR only on trusted events.
     if: |
       always() && (
         (needs.java-build.outputs.build_result == 'success' ||
          needs.node-build.outputs.build_result == 'success' ||
-         needs.python-build.outputs.build_result == 'success') &&
+         needs.python-build.outputs.build_result == 'success' ||
+         needs.native-container-build.outputs.build_result == 'success') &&
         github.actor != 'dependabot[bot]' &&
         github.event_name != 'pull_request_target' &&
         github.event_name != 'workflow_dispatch' &&
@@ -996,7 +1032,7 @@ jobs:
     # wedges the PR, and one table shows what ran, what was skipped, and why. always() bypasses
     # check-initialization's routing, so the lane test is repeated here.
     name: "Validation Summary"
-    needs: [check-initialization, check-repo-state, check-paths, java-build, node-build, python-build, docker-build, docker-push, deploy-gate, deploy-test, code-validation]
+    needs: [check-initialization, check-repo-state, check-paths, java-build, node-build, python-build, native-container-build, docker-build, docker-push, deploy-gate, deploy-test, code-validation]
     if: |
       always() &&
       (github.event_name != 'pull_request' ||
@@ -1036,11 +1072,12 @@ jobs:
               def names: {
                 "check-initialization": "Check Initialization", "check-repo-state": "Check Repository",
                 "check-paths": "Check Paths", "java-build": "Java Build", "node-build": "Node Build",
-                "python-build": "Python Build", "docker-build": "Docker Build",
+                "python-build": "Python Build", "native-container-build": "Native Container Build",
+                "docker-build": "Docker Build",
                 "code-validation": "Check Code Quality", "docker-push": "Docker Push",
                 "deploy-gate": "Deploy Gate", "deploy-test": "Deploy and Test"};
               def icon: {success: "✅", failure: "❌", cancelled: "⚠️", skipped: "⏭️"}[.] // .;
-              def build: . == "java-build" or . == "node-build" or . == "python-build" or . == "docker-build" or . == "docker-push";
+              def build: . == "java-build" or . == "node-build" or . == "python-build" or . == "native-container-build" or . == "docker-build" or . == "docker-push";
               def note:
                 if . == "deploy-test" and $gate != "" then $gate
                 elif $needs[.].result != "skipped" then ""
@@ -1049,6 +1086,7 @@ jobs:
                 elif . == "java-build" and $archetype != "java-maven-azure" then "archetype is \($archetype)"
                 elif . == "node-build" and $archetype != "node-typescript-azure" then "archetype is \($archetype)"
                 elif . == "python-build" and ($archetype != "python-fastapi-azure" and $archetype != "airflow-dag-azure") then "archetype is \($archetype)"
+                elif . == "native-container-build" and $archetype != "native-container-azure" then "archetype is \($archetype)"
                 elif build and $archetype == "" then "service archetype is unavailable"
                 elif build and $event == "pull_request_target" then "sync lane; images validate on the cascade PR"
                 elif . == "docker-push" and $actor == "dependabot[bot]" then "Dependabot validates through dependabot-validation.yml"

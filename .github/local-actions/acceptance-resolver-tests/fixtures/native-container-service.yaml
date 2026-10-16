@@ -1,0 +1,17 @@
+schemaVersion: 4
+service:
+  name: open-vds
+  archetype: native-container-azure
+  sourcePath: .
+  image:
+    context: .
+    dockerfile: .spi/image/Dockerfile
+tests:
+  acceptance:
+    type: script
+    path: .spi/acceptance
+    entrypoint: run.sh
+    reportPaths:
+      - "results/*.xml"
+    bindings:
+      VENDOR: { source: static, value: azure }

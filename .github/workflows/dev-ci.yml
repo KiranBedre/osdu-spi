@@ -17,7 +17,7 @@ jobs:
   upstream-filter-harness:
     name: Upstream Filter Harness
     runs-on: ubuntu-latest
-    if: github.repository == 'azure/osdu-spi'
+    if: github.event.repository.is_template == true
     permissions:
       contents: read
     steps:
@@ -42,6 +42,15 @@ jobs:
       - name: Run Node build harness
         run: bash .github/local-actions/node-build-tests/run-tests.sh
 
+      - name: Run native container build harness
+        run: bash .github/local-actions/native-container-build-tests/run-tests.sh
+
+      - name: Run native container build action
+        uses: ./.github/actions/native-container-build
+        with:
+          build_context: .github/local-actions/native-container-build-tests/fixtures/passing
+          dockerfile_path: .github/local-actions/native-container-build-tests/fixtures/passing/Dockerfile
+
       - name: Run load image harness
         run: bash .github/local-actions/load-image-tests/run-tests.sh
 
@@ -54,7 +63,7 @@ jobs:
   validate:
     name: Validate Template
     runs-on: ubuntu-latest
-    if: github.repository == 'azure/osdu-spi'
+    if: github.event.repository.is_template == true
     permissions:
       contents: read
 
@@ -302,8 +311,8 @@ jobs:
             "A Dependabot bump that edits upstream-owned files must be closed, not left red"
           assert_yq '.jobs."java-build".if | contains("closed != '"'"'true'"'"'")' "$DEPENDABOT" \
             "The Dependabot build must not run for a closed bump"
-          assert_yq '.jobs."docker-build".needs == "java-build"' "$DEPENDABOT" \
-            "Dependabot Docker validation must consume its Java build"
+          assert_yq '.jobs."docker-build".needs | contains(["check-repo-state", "java-build", "node-build", "python-build", "native-container-build"])' "$DEPENDABOT" \
+            "Dependabot Docker validation must consume every archetype build"
           assert_yq '.jobs."docker-build".name | contains("Dependabot")' "$DEPENDABOT" \
             "Dependabot Docker validation needs a check name distinct from validate.yml's"
           assert_yq '.jobs."docker-build".steps[] | select(.name == "Docker Build (validate-only)") | .with.push == "false"' "$DEPENDABOT" \

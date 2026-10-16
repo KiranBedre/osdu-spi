@@ -81,6 +81,7 @@ Build architecture, dependency management, and documentation:
 | [044](044-node-typescript-service-archetype.md) | **Node and TypeScript Service Archetype** | :material-trending-up: High |
 | [045](045-python-fastapi-service-archetype.md) | **Python and FastAPI Service Archetype** | :material-trending-up: High |
 | [046](046-airflow-dag-service-archetype.md) | **Airflow DAG Service Archetype** | :material-trending-up: High |
+| [047](047-native-container-service-archetype.md) | **Native Container Service Archetype** | :material-trending-up: High |
 
 ### :material-rocket-launch: CI/CD & Deployment
 
