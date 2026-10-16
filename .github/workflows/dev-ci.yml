@@ -45,6 +45,12 @@ jobs:
       - name: Run native container build harness
         run: bash .github/local-actions/native-container-build-tests/run-tests.sh
 
+      - name: Run native container build action
+        uses: ./.github/actions/native-container-build
+        with:
+          build_context: .github/local-actions/native-container-build-tests/fixtures/passing
+          dockerfile_path: .github/local-actions/native-container-build-tests/fixtures/passing/Dockerfile
+
       - name: Run load image harness
         run: bash .github/local-actions/load-image-tests/run-tests.sh
 
