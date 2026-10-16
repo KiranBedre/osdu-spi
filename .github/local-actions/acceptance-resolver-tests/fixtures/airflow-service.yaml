@@ -1,0 +1,21 @@
+schemaVersion: 4
+service:
+  name: vds-converter
+  archetype: airflow-dag-azure
+  sourcePath: "."
+  pythonVersion: "3.12"
+  airflowVersion: "3.2.2"
+  dagPath: src/dags/segy_to_vds_ssdms_conversion_dag.py
+  dagId: segy_to_vds_ssdms_conversion
+  image:
+    context: "."
+    dockerfile: Dockerfile
+tests:
+  acceptance:
+    type: script
+    path: .spi/acceptance
+    entrypoint: run.sh
+    arguments: ["--workflow-url", "${WORKFLOW_URL}"]
+    reportPaths: ["results/*.xml"]
+    bindings:
+      WORKFLOW_URL: { source: gateway, suffix: /api/workflow/v1 }

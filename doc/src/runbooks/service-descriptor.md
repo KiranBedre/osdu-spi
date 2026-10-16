@@ -46,7 +46,7 @@ tests:
 `service.name` is the name the stack uses for the service: the `<service>` argument given to `spi onboard`, such as `partition`. The deploy lane pins, verifies, and restores under this name. It is independent of the image and GHCR package name, which is the `SERVICE_NAME` repository variable when set and the repository name otherwise, so `Azure/osdu-spi-partition` and `danielscholl-osdu/partition` both declare `partition`.
 
 Schema version 3 uses `java-maven-azure`. Schema version 4 also supports
-`node-typescript-azure` and `python-fastapi-azure`.
+`node-typescript-azure`, `python-fastapi-azure`, and `airflow-dag-azure`.
 
 `tests` is a map of suites. `acceptance` is required, and it's the suite the image runs when no other is selected. Suite names are lowercase slugs. Every suite has the same fields:
 
@@ -95,6 +95,39 @@ The Python acceptance image includes the complete repository because pytest
 suites commonly import application modules outside their test directory. It
 still runs from `tests.<name>.path`, invokes the declared entrypoint directly,
 and copies only that suite directory back for verdict processing.
+
+## Airflow DAG services
+
+An Airflow DAG uses schema version 4:
+
+```yaml
+schemaVersion: 4
+service:
+  name: vds-converter
+  archetype: airflow-dag-azure
+  sourcePath: "."
+  pythonVersion: "3.12"
+  airflowVersion: "3.2.2"
+  dagPath: src/dags/segy_to_vds_ssdms_conversion_dag.py
+  dagId: segy_to_vds_ssdms_conversion
+  image:
+    context: "."
+    dockerfile: Dockerfile
+tests:
+  acceptance:
+    type: script
+    path: .spi/acceptance
+    entrypoint: run.sh
+    arguments: [--workflow-url, "${WORKFLOW_URL}"]
+    reportPaths: [results/*.xml]
+    bindings:
+      WORKFLOW_URL: { source: gateway, suffix: /api/workflow/v1 }
+```
+
+The fork build script owns DAG rendering and unit tests. It writes the same
+JUnit and coverage evidence as another Python service. The shared build action
+then imports `dagPath` with the exact Airflow version and fails unless `dagId`
+is present with no import errors.
 
 ## Single-module and reactor suites
 
