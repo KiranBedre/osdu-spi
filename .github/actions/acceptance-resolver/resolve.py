@@ -515,6 +515,7 @@ def _validate_service_config(service, archetype):
             "image": {
                 "context": ".",
                 "dockerfile": "build/Dockerfile",
+                "platforms": "",
             },
         }
 
@@ -565,7 +566,7 @@ def _validate_service_config(service, archetype):
     image = service["image"]
     if not isinstance(image, dict):
         raise Halt("DESCRIPTOR_INVALID", f"{where}.image must be a mapping")
-    _require_keys(image, ("context", "dockerfile"), ("context", "dockerfile"),
+    _require_keys(image, ("context", "dockerfile", "platforms"), ("context", "dockerfile"),
                   f"{where}.image")
     context = _string_field(image, "context", f"{where}.image", PATH_RE)
     dockerfile = _string_field(image, "dockerfile", f"{where}.image", PATH_RE)
@@ -573,6 +574,20 @@ def _validate_service_config(service, archetype):
         if ".." in value.split("/"):
             raise Halt("DESCRIPTOR_INVALID",
                        f"{where}.image.{key} must stay inside the repository")
+    platforms = ""
+    if "platforms" in image:
+        if not is_native:
+            raise Halt(
+                "DESCRIPTOR_INVALID",
+                f"{where}.image.platforms is only valid for native-container-azure",
+            )
+        platforms = _string_field(image, "platforms", f"{where}.image")
+        if platforms not in ("linux/amd64", "linux/amd64,linux/arm64"):
+            raise Halt(
+                "DESCRIPTOR_INVALID",
+                f"{where}.image.platforms must be linux/amd64 "
+                "or linux/amd64,linux/arm64",
+            )
     return {
         "name": service["name"],
         "archetype": archetype,
@@ -585,6 +600,7 @@ def _validate_service_config(service, archetype):
         "image": {
             "context": context,
             "dockerfile": dockerfile,
+            "platforms": platforms,
         },
     }
 

@@ -129,6 +129,33 @@ JUnit and coverage evidence as another Python service. The shared build action
 then imports `dagPath` with the exact Airflow version and fails unless `dagId`
 is present with no import errors.
 
+## Native container services
+
+A native container owns its compiler, test, and installation stages:
+
+```yaml
+schemaVersion: 4
+service:
+  name: open-vds
+  archetype: native-container-azure
+  sourcePath: "."
+  image:
+    context: "."
+    dockerfile: .spi/image/Dockerfile
+    platforms: linux/amd64
+tests:
+  acceptance:
+    type: script
+    path: .spi/acceptance
+    entrypoint: run.sh
+    reportPaths: [results/*.xml]
+```
+
+`platforms` is optional. Publication defaults to
+`linux/amd64,linux/arm64`; use `linux/amd64` only when the service or its
+deployment target does not support arm64. Pull request validation remains
+amd64 in either case.
+
 ## Single-module and reactor suites
 
 **A single module** has its `pom.xml` at the path and runs with `[test]` or `[verify]`. Upstream's `<service>-acceptance-test` is laid out this way.

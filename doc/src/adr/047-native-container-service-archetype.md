@@ -35,8 +35,9 @@ report as native test evidence.
 The deployable image copies its installed artifacts from the build stage that
 ran the tests. Docker image validation and publication run only after the
 native test action succeeds. Pull request validation tests `linux/amd64`; the
-trusted publication lane retains the template's multi-architecture image
-build.
+trusted publication lane defaults to `linux/amd64,linux/arm64`. A native
+container can declare `service.image.platforms: linux/amd64` when its tests or
+deployment target do not support arm64.
 
 ## Consequences
 
@@ -55,6 +56,8 @@ build.
   can reuse layers.
 - Pull request tests run only on `linux/amd64`; multi-architecture failures
   can first appear in the trusted publication lane.
+- An amd64-only descriptor does not provide an arm64 image, and the service
+  owner must expand the platform contract before deploying to arm64 nodes.
 
 ## Related Decisions
 

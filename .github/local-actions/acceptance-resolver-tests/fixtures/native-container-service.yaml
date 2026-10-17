@@ -6,6 +6,7 @@ service:
   image:
     context: .
     dockerfile: .spi/image/Dockerfile
+    platforms: linux/amd64
 tests:
   acceptance:
     type: script
