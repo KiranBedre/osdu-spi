@@ -71,6 +71,10 @@
             "dockerfile": {
               "type": "string",
               "pattern": "^(?:\\.spi/[A-Za-z0-9][A-Za-z0-9._/-]{0,119}|[A-Za-z0-9][A-Za-z0-9._/-]{0,119})$"
+            },
+            "platforms": {
+              "enum": ["linux/amd64", "linux/amd64,linux/arm64"],
+              "description": "Publication platforms for native-container-azure. Omit to retain the multi-architecture default."
             }
           },
           "description": "Source-based service image inputs. Required for Node, Python, Airflow, and native container archetypes."

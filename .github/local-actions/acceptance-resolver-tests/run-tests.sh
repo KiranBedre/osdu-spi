@@ -644,10 +644,16 @@ engine --contract-only --descriptor "$NATIVE" --report "$TMP/native.json" >/dev/
   || die "native container must not publish a Python version"
 [ "$(report_field "$TMP/native.json" "r['service_config']['image']['dockerfile']")" = ".spi/image/Dockerfile" ] \
   || die "native container Dockerfile missing from report"
+[ "$(report_field "$TMP/native.json" "r['service_config']['image']['platforms']")" = "linux/amd64" ] \
+  || die "native container platforms missing from report"
 sed '/  sourcePath:/a\  pythonVersion: "3.12"' "$NATIVE" > "$TMP/native-runtime.yaml"
 expect_fail "native container refuses a runtime version" 2 \
   "pythonVersion is not valid for native-container-azure" "DESCRIPTOR_INVALID" \
   engine --contract-only --descriptor "$TMP/native-runtime.yaml"
+sed 's#platforms: linux/amd64#platforms: linux/arm64#' "$NATIVE" > "$TMP/native-platform.yaml"
+expect_fail "native container refuses an unsupported platform" 2 \
+  "image.platforms must be linux/amd64 or linux/amd64,linux/arm64" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/native-platform.yaml"
 ok "schema v4 native container contract"
 
 note "token: the caller's bearer arrives as RESOLVER_TOKEN, never as a default"

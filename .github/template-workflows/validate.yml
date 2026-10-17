@@ -126,6 +126,7 @@ jobs:
       dag_id: ${{ steps.check_init.outputs.dag_id }}
       image_context: ${{ steps.check_init.outputs.image_context }}
       image_dockerfile: ${{ steps.check_init.outputs.image_dockerfile }}
+      image_platforms: ${{ steps.check_init.outputs.image_platforms }}
     steps:
       - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd  # v5.0.1
         with:
@@ -147,6 +148,7 @@ jobs:
             dag_id=$(jq -r '.service_config.dag_id' "$RUNNER_TEMP/service.json")
             image_context=$(jq -r '.service_config.image.context' "$RUNNER_TEMP/service.json")
             image_dockerfile=$(jq -r '.service_config.image.dockerfile' "$RUNNER_TEMP/service.json")
+            image_platforms=$(jq -r '.service_config.image.platforms' "$RUNNER_TEMP/service.json")
           elif [ -f "pom.xml" ] || [ -n "$(find . -name 'pom.xml' -type f)" ]; then
             archetype=java-maven-azure
             source_path=.
@@ -157,6 +159,7 @@ jobs:
             dag_id=
             image_context=.
             image_dockerfile=build/Dockerfile
+            image_platforms=
           else
             archetype=
             source_path=
@@ -167,6 +170,7 @@ jobs:
             dag_id=
             image_context=
             image_dockerfile=
+            image_platforms=
           fi
 
           if [ -n "$archetype" ] && [ -d "$source_path" ]; then
@@ -188,6 +192,7 @@ jobs:
           echo "dag_id=$dag_id" >> $GITHUB_OUTPUT
           echo "image_context=$image_context" >> $GITHUB_OUTPUT
           echo "image_dockerfile=$image_dockerfile" >> $GITHUB_OUTPUT
+          echo "image_platforms=$image_platforms" >> $GITHUB_OUTPUT
 
   check-paths:
     name: "Check Paths"
@@ -491,6 +496,7 @@ jobs:
           build_kind: ${{ needs.check-repo-state.outputs.archetype == 'java-maven-azure' && 'maven-jar' || (needs.check-repo-state.outputs.archetype == 'node-typescript-azure' && 'source' || 'source-direct') }}
           build_context: ${{ needs.check-repo-state.outputs.image_context }}
           dockerfile_path: ${{ needs.check-repo-state.outputs.image_dockerfile }}
+          platforms: ${{ needs.check-repo-state.outputs.image_platforms }}
           # Conventional JAR path; the action auto-discovers the Azure JAR when a deviant module name
           # (e.g. entitlements-v2-azure) does not match. SERVICE_TARGET_JAR forces a path (ADR-037).
           jar_file: ${{ vars.SERVICE_TARGET_JAR || format('provider/{0}-azure/target/*-spring-boot.jar', vars.SERVICE_NAME || github.event.repository.name) }}
@@ -553,6 +559,7 @@ jobs:
           build_kind: ${{ needs.check-repo-state.outputs.archetype == 'java-maven-azure' && 'maven-jar' || (needs.check-repo-state.outputs.archetype == 'node-typescript-azure' && 'source' || 'source-direct') }}
           build_context: ${{ needs.check-repo-state.outputs.image_context }}
           dockerfile_path: ${{ needs.check-repo-state.outputs.image_dockerfile }}
+          platforms: ${{ needs.check-repo-state.outputs.image_platforms }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
           jar_file: ${{ vars.SERVICE_TARGET_JAR || format('provider/{0}-azure/target/*-spring-boot.jar', vars.SERVICE_NAME || github.event.repository.name) }}
 
