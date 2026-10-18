@@ -53,6 +53,17 @@ Passthrough keeps the upstream tree byte for byte, adds the SPI engineering
 system on the integration branch, and continues syncing future upstream
 changes without filtering or one-time Azure seeding.
 
+If GitHub rejects objects that remain in the source repository's history, use:
+
+```
+mode: snapshot
+```
+
+Snapshot keeps the upstream tip tree byte for byte and records its source SHA,
+but does not attach the source commit as a Git parent. Future syncs chain SPI
+snapshot commits, so deleted oversized or policy-rejected source objects never
+become reachable from this GitHub repository. Source tags are not published.
+
 > **Nonconventional services**: the filter configuration is generated from a template using the upstream repository name. If this service's Maven module prefix differs from that name, or its upstream layout deviates from the conventional shape, commit a complete `.github/upstream-filter.yml` to `main` before replying; initialization will use it instead.
 
 ---

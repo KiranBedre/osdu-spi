@@ -189,6 +189,8 @@ jobs:
           FILTER_CONFIG="$RUNNER_TEMP/upstream-filter.yml"
           if [ "$SYNC_MODE" = "passthrough" ]; then
             echo "::notice::Passthrough mode keeps the upstream tree intact"
+          elif [ "$SYNC_MODE" = "snapshot" ]; then
+            echo "::notice::Snapshot mode keeps the upstream tip tree intact without its ancestry"
           elif [ -f ".github/upstream-filter.yml" ]; then
             echo "::notice::Using the hand-planted .github/upstream-filter.yml from main"
             cp ".github/upstream-filter.yml" "$FILTER_CONFIG"
@@ -288,6 +290,9 @@ jobs:
         run: |
           if [ "$SYNC_MODE" = "passthrough" ]; then
             echo "::notice::Passthrough mode has no fork-owned seed trees"
+            exit 0
+          elif [ "$SYNC_MODE" = "snapshot" ]; then
+            echo "::notice::Snapshot mode has no fork-owned seed trees"
             exit 0
           fi
 

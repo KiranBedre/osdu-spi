@@ -22,7 +22,8 @@
 #
 # Environment:
 #   GITHUB_TOKEN - issue comments when an issue number is given
-#   SYNC_MODE - passthrough isolates source tags for explicit publication
+#   SYNC_MODE - passthrough isolates source tags for explicit publication;
+#               snapshot fetches no tags because source objects are not published
 #   DEFAULT_BRANCH - output: written to GITHUB_ENV
 #   REPO_URL - output: written to GITHUB_ENV as the full clone URL
 
@@ -55,15 +56,21 @@ if [[ -n "${GITHUB_ENV:-}" ]]; then
 fi
 
 git remote add upstream "$REPO_URL"
-if [[ "${SYNC_MODE:-filter}" == "passthrough" ]]; then
-  git fetch upstream --prune --no-tags
-  # Keep source tags in a private namespace. Template-derived repositories may
-  # already have their own tags; passthrough initialization must never publish
-  # those as if they came from the source upstream.
-  git fetch upstream --prune --no-tags '+refs/tags/*:refs/upstream-tags/*'
-else
-  git fetch upstream --prune --tags
-fi
+case "${SYNC_MODE:-filter}" in
+  passthrough)
+    git fetch upstream --prune --no-tags
+    # Keep source tags in a private namespace. Template-derived repositories may
+    # already have their own tags; passthrough initialization must never publish
+    # those as if they came from the source upstream.
+    git fetch upstream --prune --no-tags '+refs/tags/*:refs/upstream-tags/*'
+    ;;
+  snapshot)
+    git fetch upstream --prune --no-tags
+    ;;
+  *)
+    git fetch upstream --prune --tags
+    ;;
+esac
 
 BRANCHES=$(git branch -r | grep upstream | sed 's/upstream\///' | grep -v HEAD | tr '\n' ' ' || echo "")
 echo "Available branches: $BRANCHES"

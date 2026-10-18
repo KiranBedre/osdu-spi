@@ -17,7 +17,7 @@ outputs:
     description: 'Validated repository identifier (empty if validation failed)'
     value: ${{ steps.validate.outputs.upstream_repo }}
   sync_mode:
-    description: 'Validated upstream mode: filter or passthrough'
+    description: 'Validated upstream mode: filter, passthrough, or snapshot'
     value: ${{ steps.validate.outputs.sync_mode }}
   should_proceed:
     description: 'Whether validation passed (true/false)'
