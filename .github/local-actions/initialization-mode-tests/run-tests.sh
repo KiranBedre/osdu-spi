@@ -40,6 +40,11 @@ run_validation $'https://community.opengroup.org/osdu/platform/domain-data-mgmt-
 [ "$(value "$TMP/passthrough.out" sync_mode)" = "passthrough" ] || die "passthrough mode not exported"
 ok "passthrough initialization input validated"
 
+run_validation $'https://community.opengroup.org/osdu/platform/data-flow/ingestion/segy-to-zgy-conversion\nmode: snapshot' "$TMP/snapshot.out"
+[ "$(value "$TMP/snapshot.out" should_proceed)" = "true" ] || die "snapshot mode rejected"
+[ "$(value "$TMP/snapshot.out" sync_mode)" = "snapshot" ] || die "snapshot mode not exported"
+ok "snapshot initialization input validated"
+
 run_validation $'owner/service\nmode: mirror' "$TMP/invalid.out"
 [ "$(value "$TMP/invalid.out" should_proceed)" = "false" ] || die "customer mirror mode accepted by first-tier initialization"
 [ -z "$(value "$TMP/invalid.out" upstream_repo)" ] || die "invalid mode exported an upstream repository"
@@ -87,13 +92,35 @@ VERSION=$(git -C "$TMP/init-work" describe --tags --abbrev=0 upstream/main)
 [ "$VERSION" = "source-v1" ] || die "published source tag cannot describe the upstream tip"
 ok "passthrough source tags stay isolated from template tags"
 
+git init -q --bare "$TMP/snapshot-destination.git"
+git -C "$TMP/template-work" remote add snapshot-origin "$TMP/snapshot-destination.git"
+git -C "$TMP/template-work" push -q snapshot-origin main refs/tags/template-v1
+git -C "$TMP/snapshot-destination.git" symbolic-ref HEAD refs/heads/main
+git clone -q "$TMP/snapshot-destination.git" "$TMP/snapshot-work"
+git -C "$TMP/snapshot-work" config url."$TMP/source.git".insteadOf https://example.test/source.git
+(cd "$TMP/snapshot-work" && SYNC_MODE=snapshot bash "$SETUP_UPSTREAM" https://example.test/source >/dev/null)
+git -C "$TMP/snapshot-work" show-ref --verify --quiet refs/remotes/upstream/main \
+  || die "snapshot mode did not fetch the upstream branch"
+if git -C "$TMP/snapshot-work" show-ref --verify --quiet refs/upstream-tags/source-v1; then
+  die "snapshot mode fetched source tags that cannot be published"
+fi
+if git -C "$TMP/snapshot-work" show-ref --verify --quiet refs/tags/source-v1; then
+  die "snapshot mode leaked a source tag into the destination namespace"
+fi
+ok "snapshot mode fetches the source branch without source tags"
+
 grep -q 'gh variable set SYNC_MODE' "$WORKFLOW" || die "initialization does not persist the selected mode"
 grep -q 'Passthrough mode keeps the upstream tree intact' "$WORKFLOW" || die "passthrough generation branch missing"
 grep -q 'Passthrough mode has no fork-owned seed trees' "$WORKFLOW" || die "passthrough still seeds Maven trees"
+grep -q 'Snapshot mode keeps the upstream tip tree intact without its ancestry' "$WORKFLOW" || die "snapshot generation branch missing"
+grep -q 'Snapshot mode has no fork-owned seed trees' "$WORKFLOW" || die "snapshot still seeds Maven trees"
 grep -q "refs/upstream-tags/\\*:refs/tags/\\*" "$WORKFLOW" || die "passthrough initialization does not publish isolated upstream tags"
 grep -q "if: vars.SYNC_MODE != 'mirror'" "$TEMPLATE_SYNC" || die "template sync gating changed unexpectedly"
 if grep -q "vars.SYNC_MODE != 'passthrough'" "$TEMPLATE_SYNC"; then
   die "passthrough must continue receiving template updates"
+fi
+if grep -q "vars.SYNC_MODE != 'snapshot'" "$TEMPLATE_SYNC"; then
+  die "snapshot must continue receiving template updates"
 fi
 ok "workflow preserves history, tags, and the template delivery channel"
 

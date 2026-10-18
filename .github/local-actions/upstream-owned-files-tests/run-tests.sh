@@ -108,6 +108,8 @@ run_list "$TMP/o8" BASE_REF=main HEAD_REF=x BASE_SHA="$BASE" HEAD_SHA="$HEAD" SA
 [ "$(output_value "$TMP/o8" checked)" = "false" ] || die "mirror mode must be exempt"
 run_list "$TMP/o8b" BASE_REF=main HEAD_REF=x BASE_SHA="$BASE" HEAD_SHA="$HEAD" SAME_REPO=true SYNC_MODE=passthrough >/dev/null
 [ "$(output_value "$TMP/o8b" checked)" = "false" ] || die "passthrough mode must be exempt"
+run_list "$TMP/o8c" BASE_REF=main HEAD_REF=x BASE_SHA="$BASE" HEAD_SHA="$HEAD" SAME_REPO=true SYNC_MODE=snapshot >/dev/null
+[ "$(output_value "$TMP/o8c" checked)" = "false" ] || die "snapshot mode must be exempt"
 ok "same-repo automation heads, non-main base, verbatim modes"
 
 note "missing fork_upstream fails closed"

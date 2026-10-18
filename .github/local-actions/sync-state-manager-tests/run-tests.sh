@@ -253,6 +253,7 @@ REV_NOW="$("$GEN_REV")"
 [[ "$(SYNC_MODE=mirror "$GEN_REV")" == "mirror" ]] || die "mirror mode did not short-circuit the revision"
 [[ "$(SYNC_MODE=mirror "$GEN_REV")" != "$REV_NOW" ]] || die "mirror and filter share a revision"
 [[ "$(SYNC_MODE=passthrough "$GEN_REV")" == "passthrough" ]] || die "passthrough mode did not short-circuit the revision"
+[[ "$(SYNC_MODE=snapshot "$GEN_REV")" == "snapshot" ]] || die "snapshot mode did not short-circuit the revision"
 if SYNC_MODE=unknown "$GEN_REV" >/dev/null 2>&1; then
   die "unknown sync mode must halt"
 fi

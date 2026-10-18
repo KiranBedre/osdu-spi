@@ -565,6 +565,7 @@ jobs:
        needs.companion-python-build.outputs.build_result == 'success') &&
       github.event_name != 'pull_request_target' &&
       (vars.SYNC_MODE == 'mirror' || vars.SYNC_MODE == 'passthrough' ||
+       vars.SYNC_MODE == 'snapshot' ||
        (github.base_ref != 'fork_upstream' && github.ref_name != 'fork_upstream'))
     runs-on: ubuntu-latest
     permissions:

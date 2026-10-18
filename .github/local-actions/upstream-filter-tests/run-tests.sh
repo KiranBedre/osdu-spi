@@ -571,10 +571,44 @@ PASS_OUT2="$TMP/passthrough2.env"
 # shellcheck disable=SC1090
 . "$PASS_OUT2"
 [ "${has_changes:-}" = "false" ] || die "passthrough repeat synchronization did not converge"
+ok "passthrough mode: intact first generation and repeat sync"
+
+note "plumbing: snapshot mode preserves the tip tree without source ancestry"
+SNAP_OUT="$TMP/snapshot.env"
+(cd "$PLUMB" && SYNC_MODE=snapshot bash "$(dirname "$ENGINE")/generate-branch.sh" "" "$UP_SHA" "$TMP/no-such-config.yml" "$SNAP_OUT")
+# shellcheck disable=SC1090
+. "$SNAP_OUT"
+[ "${has_changes:-}" = "true" ] || die "snapshot first generation reported no changes"
+[ "$filter_rev" = "snapshot" ] || die "snapshot filter_rev is not the sentinel"
+[ "$tree" = "$(git -C "$PLUMB" rev-parse "${UP_SHA}^{tree}")" ] || die "snapshot tree changed upstream bytes"
+SNAP_ROOT="$commit"
+SNAP_PARENTS=$(git -C "$PLUMB" rev-list --parents -n 1 "$SNAP_ROOT" | wc -w | tr -d ' ')
+[ "$SNAP_PARENTS" = "1" ] || die "snapshot first generation is not a root commit"
+git -C "$PLUMB" cat-file -p "$SNAP_ROOT" | grep -q "Upstream-Sha: $UP_SHA" || die "snapshot omitted the source SHA trailer"
+git -C "$PLUMB" cat-file -p "$SNAP_ROOT" | grep -q "chore: snapshot upstream tree" || die "snapshot commit message is wrong"
+
+SNAP_BASE_OUT="$TMP/snapshot-base.env"
+(cd "$PLUMB" && SYNC_MODE=snapshot bash "$(dirname "$ENGINE")/generate-branch.sh" "$BASE_SHA" "$UP_SHA" "$TMP/no-such-config.yml" "$SNAP_BASE_OUT")
+# shellcheck disable=SC1090
+. "$SNAP_BASE_OUT"
+SNAP_WITH_BASE="$commit"
+SNAP_PARENTS=$(git -C "$PLUMB" rev-list --parents -n 1 "$SNAP_WITH_BASE" | wc -w | tr -d ' ')
+[ "$SNAP_PARENTS" = "2" ] || die "incremental snapshot does not have exactly one parent"
+[ "$(git -C "$PLUMB" rev-parse "$SNAP_WITH_BASE^")" = "$BASE_SHA" ] || die "incremental snapshot parent is not the prior fork_upstream tip"
+if git -C "$PLUMB" merge-base --is-ancestor "$UP_SHA" "$SNAP_WITH_BASE"; then
+  die "snapshot made the source commit reachable"
+fi
+
+SNAP_OUT2="$TMP/snapshot2.env"
+(cd "$PLUMB" && SYNC_MODE=snapshot bash "$(dirname "$ENGINE")/generate-branch.sh" "$SNAP_ROOT" "$UP_SHA" "$TMP/no-such-config.yml" "$SNAP_OUT2")
+# shellcheck disable=SC1090
+. "$SNAP_OUT2"
+[ "${has_changes:-}" = "false" ] || die "snapshot repeat synchronization did not converge"
+ok "snapshot mode: intact tree, recorded SHA, no source ancestry, repeat convergence"
+
 RC=0
 (cd "$PLUMB" && SYNC_MODE=unknown bash "$(dirname "$ENGINE")/generate-branch.sh" "" "$UP_SHA" "$CONFIG" "$TMP/unknown.env") >/dev/null 2>&1 || RC=$?
 [ "$RC" -eq 2 ] || die "unknown sync mode must halt with exit 2"
-ok "passthrough mode: intact first generation and repeat sync"
 
 note "seed-source: extracts trees, surviving a deletion through an ours-merge"
 SSR="$TMP/seed-source-repo"

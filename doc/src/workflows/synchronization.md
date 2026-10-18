@@ -3,7 +3,9 @@
 The upstream synchronization workflow keeps the fork synchronized with its
 upstream OSDU repository. In the default `filter` mode it deterministically
 generates the provider-less `fork_upstream` tree defined by the filter
-configuration. In `passthrough` mode it takes the upstream tree verbatim.
+configuration. In `passthrough` and `snapshot` modes it takes the upstream
+tree verbatim. Snapshot records the source SHA without making the source
+commit a Git parent.
 
 Only one sync PR exists at a time. When upstream changes, the workflow either creates a new sync PR or updates the open one.
 
@@ -23,7 +25,7 @@ The workflow:
 1. **Fetches upstream** - Resolves the upstream `main` or `master` tip
 2. **Generates the upstream tree** - Filters conventional services or preserves intact repositories according to `SYNC_MODE`
 3. **Verifies classification** - In filter mode, halts on unknown shared modules or missing expected paths
-4. **Creates or updates a sync branch** - Serializes the generated tree as a merge-shaped commit without checking out `fork_upstream`
+4. **Creates or updates a sync branch** - Serializes the generated tree without checking out `fork_upstream`; filter and passthrough preserve source ancestry, while snapshot chains only destination commits
 5. **Generates a PR** - Body is computed from the upstream commit range, capped so it stays within GitHub's body limit
 6. **Creates a tracking issue** - Links the PR with `human-required` and `upstream-sync` labels
 7. **Waits for human review** - The team merges the PR into `fork_upstream` to continue the cascade
@@ -48,8 +50,9 @@ tracking issue remains the source of truth.
 
 ## Upstream Filter Transform
 
-Filter mode separates source ownership as follows. Passthrough mode has no path
-ownership split and does not read `.github/upstream-filter.yml`.
+Filter mode separates source ownership as follows. Passthrough and snapshot
+modes have no path ownership split and do not read
+`.github/upstream-filter.yml`.
 
 The transform separates source ownership:
 
@@ -112,7 +115,7 @@ Look for `human-required,upstream-sync` issues for sync PR review and `human-req
 | **Monitor Trigger** | 6 hours | Auto-cascade if human trigger missed |
 | **State Persistence** | Issues and open PRs | Tracks the active upstream SHA and sync branch |
 | **Filter Configuration** | `.github/upstream-filter.yml` | Explicit per-service classification |
-| **Sync Mode** | `filter` | Set to `passthrough` for an intact upstream tree |
+| **Sync Mode** | `filter` | Set to `passthrough` for an intact source graph, or `snapshot` for an intact tip tree whose source ancestry cannot be published |
 
 ## Troubleshooting
 
@@ -131,3 +134,4 @@ Look for `human-required,upstream-sync` issues for sync PR review and `human-req
 - [Conflict Management](../adr/005-conflict-management.md) - Detailed resolution guidance
 - [ADR-038: Upstream Filter Transform](../adr/038-upstream-filter-transform.md) - Filter ownership and halt behavior
 - [ADR-043: Intact Upstream Passthrough](../adr/043-intact-upstream-passthrough.md) - Verbatim first-tier synchronization
+- [ADR-049: Upstream Tip Snapshot](../adr/049-upstream-tip-snapshot.md) - Verbatim tip trees without source ancestry
