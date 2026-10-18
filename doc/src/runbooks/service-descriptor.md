@@ -46,7 +46,8 @@ tests:
 `service.name` is the name the stack uses for the service: the `<service>` argument given to `spi onboard`, such as `partition`. The deploy lane pins, verifies, and restores under this name. It is independent of the image and GHCR package name, which is the `SERVICE_NAME` repository variable when set and the repository name otherwise, so `Azure/osdu-spi-partition` and `danielscholl-osdu/partition` both declare `partition`.
 
 Schema version 3 uses `java-maven-azure`. Schema version 4 also supports
-`node-typescript-azure`, `python-fastapi-azure`, and `airflow-dag-azure`.
+`node-typescript-azure`, `python-fastapi-azure`, `airflow-dag-azure`, and
+`native-container-azure`.
 
 `tests` is a map of suites. `acceptance` is required, and it's the suite the image runs when no other is selected. Suite names are lowercase slugs. Every suite has the same fields:
 
@@ -155,6 +156,53 @@ tests:
 `linux/amd64,linux/arm64`; use `linux/amd64` only when the service or its
 deployment target does not support arm64. Pull request validation remains
 amd64 in either case.
+
+## Source-owned companion images
+
+A repository that builds a native task and its Airflow orchestration can
+declare one DAG companion:
+
+```yaml
+schemaVersion: 4
+service:
+  name: zgy-converter
+  archetype: native-container-azure
+  sourcePath: "."
+  image:
+    context: "."
+    dockerfile: .spi/image/Dockerfile
+    platforms: linux/amd64
+  companion:
+    name: dag
+    kind: airflow-dag
+    packageSuffix: -dag
+    sourcePath: "."
+    pythonVersion: "3.12"
+    airflowVersion: "3.2.2"
+    dagPath: src/dags/segy_to_zgy_ingestion_dag.py
+    dagId: segy-to-zgy-conversion
+    image:
+      context: "."
+      dockerfile: .spi/dag/Dockerfile
+tests:
+  acceptance:
+    type: script
+    path: .spi/acceptance
+    entrypoint: run.sh
+    reportPaths: [results/*.xml]
+```
+
+The companion runs the same exact-version Airflow parsing gate as an Airflow
+DAG service. Validation builds both Dockerfiles. Trusted events publish the
+primary package and `<primary>-dag` with the same `sha-<commit>` tag, and a
+release retags both packages with the same semantic version.
+
+The companion is a DAG layer for a Stack-owned shared Airflow image. It does
+not deploy another scheduler or worker set. The Stack contract advances and
+restores the primary and companion digests together.
+
+`packageSuffix` must be a lowercase package suffix beginning with `-`.
+`-acceptance` and `-load` are reserved by the template.
 
 ## Single-module and reactor suites
 

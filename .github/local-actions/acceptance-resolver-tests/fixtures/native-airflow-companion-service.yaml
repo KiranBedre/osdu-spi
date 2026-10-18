@@ -1,0 +1,30 @@
+schemaVersion: 4
+service:
+  name: zgy-converter
+  archetype: native-container-azure
+  sourcePath: .
+  image:
+    context: .
+    dockerfile: .spi/image/Dockerfile
+    platforms: linux/amd64
+  companion:
+    name: dag
+    kind: airflow-dag
+    packageSuffix: -dag
+    sourcePath: .
+    pythonVersion: "3.12"
+    airflowVersion: "3.2.2"
+    dagPath: src/dags/segy_to_zgy_ingestion_dag.py
+    dagId: segy-to-zgy-conversion
+    image:
+      context: .
+      dockerfile: .spi/dag/Dockerfile
+tests:
+  acceptance:
+    type: script
+    path: .spi/acceptance
+    entrypoint: run.sh
+    reportPaths:
+      - "results/*.xml"
+    bindings:
+      WORKFLOW_URL: { source: gateway, suffix: /api/workflow/v1 }
