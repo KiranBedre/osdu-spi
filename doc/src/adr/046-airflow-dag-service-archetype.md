@@ -64,3 +64,4 @@ image by digest. The Stack deploys the resulting image by digest.
 - [ADR-040: Descriptor-Owned Acceptance Contract](040-descriptor-acceptance-contract.md)
 - [ADR-041: Borrow, Prove, Restore Lane](041-borrow-prove-restore-lane.md)
 - [ADR-045: Python and FastAPI Service Archetype](045-python-fastapi-service-archetype.md)
+- [ADR-048: Source-Owned Companion Image](048-source-owned-companion-image.md)

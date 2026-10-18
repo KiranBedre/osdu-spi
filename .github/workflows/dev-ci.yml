@@ -120,6 +120,8 @@ jobs:
           BUILD=".github/template-workflows/build.yml"
           VALIDATE=".github/template-workflows/validate.yml"
           DEPENDABOT=".github/template-workflows/dependabot-validation.yml"
+          RELEASE=".github/template-workflows/release.yml"
+          RETENTION=".github/template-workflows/ghcr-retention.yml"
 
           assert_yq() {
             if ! yq --exit-status "$1" "$2" > /dev/null; then
@@ -150,6 +152,8 @@ jobs:
             "Sync branches must use the Validation workflow"
           assert_yq '.on.push.branches | contains(["!dependabot/**"])' "$BUILD" \
             "Dependabot branches must use the Dependabot Validation workflow"
+          assert_yq '.jobs | has("companion-python-build")' "$BUILD" \
+            "Branch builds must validate a declared Airflow DAG companion"
 
           # A path-filtered PR trigger leaves the required summary Pending (ADR-030).
           assert_yq '.on.pull_request | has("paths-ignore") | not' "$VALIDATE" \
@@ -224,6 +228,16 @@ jobs:
             "docker-build must stay out of the pull_request_target lane"
           assert_yq '[.jobs."docker-build".steps[] | select(.uses != null and (.uses | test("actions/checkout"))) | .with.ref == null] | select(length > 0) | all' "$VALIDATE" \
             "docker-build must check out github.sha, never a PR head"
+          assert_yq '.jobs."companion-python-build".if | contains("airflow-dag")' "$VALIDATE" \
+            "The companion build must run only for the declared Airflow DAG kind"
+          assert_yq '.jobs."docker-build".steps[] | select(.name == "Companion Image") | .with.push == "false"' "$VALIDATE" \
+            "Untrusted companion image validation must never push"
+          assert_yq '.jobs."docker-push".steps[] | select(.id == "companion") | .with.push == "true"' "$VALIDATE" \
+            "Trusted publication must push the declared companion image"
+          assert_yq '.jobs."retag-image".steps[] | select(.name == "Tag companion image with semver") | .run | contains("package_suffix")' "$RELEASE" \
+            "Release publication must retag the descriptor-owned companion package"
+          assert_yq '.jobs.retention.steps[] | select(.name == "Prune old image tags") | .run | contains("COMPANION_SUFFIX")' "$RETENTION" \
+            "GHCR retention must prune the descriptor-owned companion package"
 
           # The deploy lane inherits docker-push's trust and never enters the pull_request_target lane.
           assert_yq '.jobs."deploy-test".needs | contains(["docker-push", "deploy-gate"])' "$VALIDATE" \
@@ -311,12 +325,14 @@ jobs:
             "A Dependabot bump that edits upstream-owned files must be closed, not left red"
           assert_yq '.jobs."java-build".if | contains("closed != '"'"'true'"'"'")' "$DEPENDABOT" \
             "The Dependabot build must not run for a closed bump"
-          assert_yq '.jobs."docker-build".needs | contains(["check-repo-state", "java-build", "node-build", "python-build", "native-container-build"])' "$DEPENDABOT" \
+          assert_yq '.jobs."docker-build".needs | contains(["check-repo-state", "java-build", "node-build", "python-build", "native-container-build", "companion-python-build"])' "$DEPENDABOT" \
             "Dependabot Docker validation must consume every archetype build"
           assert_yq '.jobs."docker-build".name | contains("Dependabot")' "$DEPENDABOT" \
             "Dependabot Docker validation needs a check name distinct from validate.yml's"
           assert_yq '.jobs."docker-build".steps[] | select(.name == "Docker Build (validate-only)") | .with.push == "false"' "$DEPENDABOT" \
             "Dependabot Docker validation must never push an image"
+          assert_yq '.jobs."docker-build".steps[] | select(.name == "Companion Docker Build (validate-only)") | .with.push == "false"' "$DEPENDABOT" \
+            "Dependabot companion validation must never push an image"
 
           # A failed Dependabot build is reported on the PR's checks, never as an issue (ADR-026).
           assert_yq '.jobs | has("create-issue-on-failure") | not' "$DEPENDABOT" \

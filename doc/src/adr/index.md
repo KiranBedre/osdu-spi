@@ -82,6 +82,7 @@ Build architecture, dependency management, and documentation:
 | [045](045-python-fastapi-service-archetype.md) | **Python and FastAPI Service Archetype** | :material-trending-up: High |
 | [046](046-airflow-dag-service-archetype.md) | **Airflow DAG Service Archetype** | :material-trending-up: High |
 | [047](047-native-container-service-archetype.md) | **Native Container Service Archetype** | :material-trending-up: High |
+| [048](048-source-owned-companion-image.md) | **Source-Owned Companion Image** | :material-trending-up: High |
 
 ### :material-rocket-launch: CI/CD & Deployment
 

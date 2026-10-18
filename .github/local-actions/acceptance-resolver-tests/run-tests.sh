@@ -73,8 +73,12 @@ expect_fail() {
 
 # Writes a descriptor variant: copies the fixture and applies one text substitution.
 variant() {
-  local out="$1" old="$2" new="$3"
-  python3 - "$DESCRIPTOR" "$out" "$old" "$new" <<'PY'
+  variant_from "$DESCRIPTOR" "$@"
+}
+
+variant_from() {
+  local source="$1" out="$2" old="$3" new="$4"
+  python3 - "$source" "$out" "$old" "$new" <<'PY'
 import sys
 src, out, old, new = sys.argv[1:5]
 text = open(src).read()
@@ -727,9 +731,32 @@ assert schema['properties']['service']['properties']['archetype']['enum'] == [
     'java-maven-azure', 'node-typescript-azure', 'python-fastapi-azure',
     'airflow-dag-azure', 'native-container-azure'
 ]
+assert schema['\$defs']['companion']['properties']['kind']['const'] == 'airflow-dag'
 assert 'keyvault:' in schema['\$defs']['binding']['properties']['source']['pattern']
 "
 ok "service-descriptor.schema.json consistent"
+
+note "companion: native primary and Airflow DAG image share one source contract"
+COMPANION="$FIXTURES/native-airflow-companion-service.yaml"
+engine --contract-only --descriptor "$COMPANION" --report "$TMP/companion.json" >/dev/null 2>&1 \
+  || die "native service with Airflow companion must validate"
+[ "$(report_field "$TMP/companion.json" "r['service_config']['archetype']")" = "native-container-azure" ] \
+  || die "companion changed the primary archetype"
+[ "$(report_field "$TMP/companion.json" "r['service_config']['companion']['kind']")" = "airflow-dag" ] \
+  || die "companion kind missing"
+[ "$(report_field "$TMP/companion.json" "r['service_config']['companion']['package_suffix']")" = "-dag" ] \
+  || die "companion package suffix missing"
+[ "$(report_field "$TMP/companion.json" "r['service_config']['companion']['dag_id']")" = "segy-to-zgy-conversion" ] \
+  || die "companion DAG ID missing"
+variant_from "$COMPANION" "$TMP/reserved-companion.yaml" \
+  "packageSuffix: -dag" "packageSuffix: -acceptance"
+expect_fail "reserved companion package suffix" 2 "reserved by the template" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/reserved-companion.yaml"
+variant_from "$COMPANION" "$TMP/bad-companion-kind.yaml" \
+  "kind: airflow-dag" "kind: arbitrary-container"
+expect_fail "unknown companion kind" 2 "kind must be airflow-dag" "DESCRIPTOR_INVALID" \
+  engine --contract-only --descriptor "$TMP/bad-companion-kind.yaml"
+ok "companion image contract"
 
 note "published descriptor examples validate against the engine"
 ROOT="$HERE/../../.."

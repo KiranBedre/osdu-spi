@@ -65,3 +65,4 @@ deployment target do not support arm64.
 - [ADR-037: Engineering System Owns the Canonical Service Dockerfile](037-engineering-system-owns-service-dockerfile.md)
 - [ADR-040: Descriptor-Owned Acceptance Contract](040-descriptor-acceptance-contract.md)
 - [ADR-046: Airflow DAG Service Archetype](046-airflow-dag-service-archetype.md)
+- [ADR-048: Source-Owned Companion Image](048-source-owned-companion-image.md)

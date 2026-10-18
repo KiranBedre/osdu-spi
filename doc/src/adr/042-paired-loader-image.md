@@ -24,7 +24,7 @@ The schema fork flips `deployments: strip` to `keep` in its filter config (ADR-0
 
 ### One step in the two image jobs
 
-`.github/actions/load-image` follows the acceptance-image action. Its first step resolves the payload and every later step is conditional on it: no payload or no `DeploySharedSchemas.py` entrypoint is exit 0 with a reason, while an entrypoint whose companion loader file is missing is exit 2 naming the file. The image is `ghcr.io/<owner>/<service>-load`, named, tagged, and visibility-checked with the service image's scripts, pushed only from `docker-push` under the ADR-036 gate. `release.yml` retags it at the semver after the acceptance image, and `ghcr-retention.yml` prunes the service, acceptance, and load packages under one policy so the images built from one commit age out together.
+`.github/actions/load-image` follows the acceptance-image action. Its first step resolves the payload and every later step is conditional on it: no payload or no `DeploySharedSchemas.py` entrypoint is exit 0 with a reason, while an entrypoint whose companion loader file is missing is exit 2 naming the file. The image is `ghcr.io/<owner>/<service>-load`, named, tagged, and visibility-checked with the service image's scripts, pushed only from `docker-push` under the ADR-036 gate. `release.yml` retags it at the semver after the acceptance image, and `ghcr-retention.yml` prunes the service, acceptance, load, and descriptor-owned companion packages under one policy so the images built from one commit age out together.
 
 ### The stack pairs by commit
 

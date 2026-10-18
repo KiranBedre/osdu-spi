@@ -38,7 +38,7 @@ import os
 import re
 import sys
 
-ENGINE_VERSION = "1.2.0"
+ENGINE_VERSION = "1.3.0"
 REPORT_SCHEMA = 1
 
 FACTS_API_VERSION = "spi.osdu.dev/v1"
@@ -57,6 +57,7 @@ PATH_RE = re.compile(
 RUNTIME_VERSION_RE = re.compile(r"^[0-9]{1,2}(?:\.[0-9]{1,2}){0,2}$")
 PYTHON_VERSION_RE = re.compile(r"^[0-9]{1,2}(?:\.[0-9]{1,2}){1,2}$")
 DAG_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,249}$")
+PACKAGE_SUFFIX_RE = re.compile(r"^-[a-z0-9][a-z0-9-]{0,31}$")
 REPORT_PATH_RE = re.compile(
     r"^(?:\.spi/[A-Za-z0-9][A-Za-z0-9._/*?{}\[\]-]{0,194}"
     r"|[A-Za-z0-9][A-Za-z0-9._/*?{}\[\]-]{0,199})$"
@@ -427,7 +428,7 @@ def validate_descriptor(data, suite="acceptance"):
     _require_keys(
         service,
         ("name", "archetype", "description", "sourcePath", "nodeVersion", "pythonVersion",
-         "airflowVersion", "dagPath", "dagId", "image"),
+         "airflowVersion", "dagPath", "dagId", "image", "companion"),
         ("name", "archetype"),
         "descriptor.service",
     )
@@ -461,6 +462,8 @@ def validate_descriptor(data, suite="acceptance"):
                        "descriptor.service.description exceeds 200 characters, "
                        "the published schema maximum")
     service_config = _validate_service_config(service, archetype)
+    service_config["companion"] = _validate_companion(
+        service.get("companion"), version)
 
     tests = data["tests"]
     if not isinstance(tests, dict):
@@ -488,7 +491,61 @@ def validate_descriptor(data, suite="acceptance"):
     return contract
 
 
-def _validate_service_config(service, archetype):
+def _empty_companion_config():
+    return {
+        "name": "",
+        "kind": "",
+        "package_suffix": "",
+        "source_path": "",
+        "python_version": "",
+        "airflow_version": "",
+        "dag_path": "",
+        "dag_id": "",
+        "image": {
+            "context": "",
+            "dockerfile": "",
+            "platforms": "",
+        },
+    }
+
+
+def _validate_companion(companion, schema_version):
+    if companion is None:
+        return _empty_companion_config()
+    where = "descriptor.service.companion"
+    if schema_version != 4:
+        raise Halt("DESCRIPTOR_INVALID",
+                   f"{where} requires schemaVersion 4")
+    if not isinstance(companion, dict):
+        raise Halt("DESCRIPTOR_INVALID", f"{where} must be a mapping")
+    _require_keys(
+        companion,
+        ("name", "kind", "packageSuffix", "sourcePath", "pythonVersion",
+         "airflowVersion", "dagPath", "dagId", "image"),
+        ("name", "kind", "packageSuffix", "sourcePath", "pythonVersion",
+         "airflowVersion", "dagPath", "dagId", "image"),
+        where,
+    )
+    _string_field(companion, "name", where, SLUG_RE)
+    kind = _string_field(companion, "kind", where)
+    if kind != "airflow-dag":
+        raise Halt("DESCRIPTOR_INVALID",
+                   f"{where}.kind must be airflow-dag")
+    package_suffix = _string_field(
+        companion, "packageSuffix", where, PACKAGE_SUFFIX_RE)
+    if package_suffix in ("-acceptance", "-load"):
+        raise Halt(
+            "DESCRIPTOR_INVALID",
+            f"{where}.packageSuffix {package_suffix} is reserved by the template",
+        )
+    config = _validate_service_config(
+        companion, "airflow-dag-azure", where=where)
+    config["kind"] = kind
+    config["package_suffix"] = package_suffix
+    return config
+
+
+def _validate_service_config(service, archetype, where="descriptor.service"):
     if archetype == "java-maven-azure":
         for key in (
             "sourcePath",
@@ -519,7 +576,6 @@ def _validate_service_config(service, archetype):
             },
         }
 
-    where = "descriptor.service"
     is_node = archetype == "node-typescript-azure"
     is_airflow = archetype == "airflow-dag-azure"
     is_native = archetype == "native-container-azure"
