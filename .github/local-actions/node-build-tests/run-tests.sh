@@ -100,6 +100,11 @@ RC=0
 [[ "$RC" -ne 0 ]] || die "missing JUnit report must fail"
 ok "missing test evidence fails"
 
+cp "$TMP/work/app/package.json" "$TMP/work/app/package-lock.json" "$TMP/work/"
+(cd "$TMP/work" && WORKING_DIRECTORY=. "$ACTION/validate-inputs.sh") >/dev/null \
+  || die "repository-root package must be accepted"
+ok "repository-root package is accepted"
+
 WORKING_DIRECTORY=../escape RC=0
 (cd "$TMP/work" && "$ACTION/validate-inputs.sh") >/dev/null 2>&1 || RC=$?
 [[ "$RC" -eq 2 ]] || die "escaping working directory must exit 2"
