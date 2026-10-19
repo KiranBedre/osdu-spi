@@ -110,7 +110,10 @@ run_list "$TMP/o8b" BASE_REF=main HEAD_REF=x BASE_SHA="$BASE" HEAD_SHA="$HEAD" S
 [ "$(output_value "$TMP/o8b" checked)" = "false" ] || die "passthrough mode must be exempt"
 run_list "$TMP/o8c" BASE_REF=main HEAD_REF=x BASE_SHA="$BASE" HEAD_SHA="$HEAD" SAME_REPO=true SYNC_MODE=snapshot >/dev/null
 [ "$(output_value "$TMP/o8c" checked)" = "false" ] || die "snapshot mode must be exempt"
-ok "same-repo automation heads, non-main base, verbatim modes"
+run_list "$TMP/o8d" BASE_REF=main HEAD_REF=edit-root BASE_SHA="$BASE" HEAD_SHA="$(git -C "$WS" rev-parse edit-root)" SAME_REPO=true SYNC_MODE=filtered-snapshot >/dev/null
+[ "$(output_value "$TMP/o8d" checked)" = "true" ] || die "filtered-snapshot must enforce the ownership split"
+[ "$(output_block "$TMP/o8d" files)" = "pom.xml" ] || die "filtered-snapshot did not list upstream-owned files"
+ok "same-repo automation heads, non-main base, verbatim modes, filtered snapshot"
 
 note "missing fork_upstream fails closed"
 git -C "$WS" push -q origin --delete fork_upstream && git -C "$WS" update-ref -d refs/remotes/origin/fork_upstream

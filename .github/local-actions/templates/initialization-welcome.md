@@ -64,6 +64,17 @@ but does not attach the source commit as a Git parent. Future syncs chain SPI
 snapshot commits, so deleted oversized or policy-rejected source objects never
 become reachable from this GitHub repository. Source tags are not published.
 
+If rejected objects remain in the current upstream tree, plant a complete
+`.github/upstream-filter.yml` and use:
+
+```
+mode: filtered-snapshot
+```
+
+Filtered snapshot applies the same fail-closed filter and ownership split as
+filter mode, then records the source SHA without attaching the source commit.
+Source tags are not published.
+
 > **Nonconventional services**: the filter configuration is generated from a template using the upstream repository name. If this service's Maven module prefix differs from that name, or its upstream layout deviates from the conventional shape, commit a complete `.github/upstream-filter.yml` to `main` before replying; initialization will use it instead.
 
 ---

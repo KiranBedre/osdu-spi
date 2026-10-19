@@ -39,6 +39,12 @@ without attaching the source commit as a Git parent. It records the full
 source SHA, skips source tags and Azure tree seeding, and chains future
 snapshots from the prior `fork_upstream` tip.
 
+If rejected objects are still present in the current upstream tree,
+`mode: filtered-snapshot` applies `.github/upstream-filter.yml` before creating
+the destination-only snapshot chain. It keeps filter mode's ownership split,
+halt behavior, and Azure tree seeding, but does not fetch source tags or attach
+the source commit as a Git parent.
+
 The filter configuration comes from the template's `.github/fork-resources/upstream-filter.yml` with `<service>` substituted from the upstream repository name. A service that deviates from the conventional shape (extra top-level entries, a module prefix that differs from the repository name) uses the escape hatch: commit a complete `.github/upstream-filter.yml` to the fork's `main` before replying to the initialization issue, and initialization prefers that file over the template. If the filter halts on an unclassified entry, the initialization issue receives the halt detail and both remediation paths; fix the config and comment again to retry.
 
 The Azure provider and test trees (`provider/<service>-azure`, `testing/<service>-test-azure`) are seeded from the newest upstream commit that still contains them, version-stamped against the generated tree, and committed on `fork_integration` before the merge to `main`. From that point the fork owns them: they never appear on `fork_upstream`, so upstream merges cannot touch them.
@@ -50,7 +56,7 @@ On success the setup issue is closed and the repository is ready for its first s
 ### Required Configuration
 - **GitHub App credentials** - `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` must be available for workflow and ruleset writes
 - **Upstream repository** - Reply to the initialization issue with `owner/repository` or a supported repository URL
-- **Upstream mode** - Use filter for conventional Java services, passthrough for an intact source graph, or snapshot when GitHub rejects source-history objects
+- **Upstream mode** - Use filter for conventional Java services, passthrough for an intact source graph, snapshot when only source history is rejected, or filtered-snapshot when the current tip must also be reduced
 - **Filter configuration** - Generated automatically from the template; only nonconventional services need a hand-planted `.github/upstream-filter.yml` on `main` before replying to the issue
 - **Team permissions** - Make sure the team has the access it needs
 
@@ -75,6 +81,11 @@ On success the setup issue is closed and the repository is ready for its first s
    ```
    https://community.opengroup.org/osdu/example
    mode: snapshot
+   ```
+   For a filtered tree whose source history cannot be published:
+   ```
+   https://community.opengroup.org/osdu/example
+   mode: filtered-snapshot
    ```
 
 3. **Verify repository variables** - Initialization sets `UPSTREAM_REPO_URL`, `SYNC_MODE`, and `INITIALIZATION_COMPLETE`
@@ -109,7 +120,7 @@ On success the setup issue is closed and the repository is ready for its first s
 
 ### Branches
 - **`main`** - Your production branch (protected)
-- **`fork_upstream`** - Generated upstream-owned tree; provider-less in filter mode, intact with source ancestry in passthrough mode, and intact without source ancestry in snapshot mode
+- **`fork_upstream`** - Generated upstream-owned tree; provider-less in filter mode, intact with source ancestry in passthrough mode, intact without source ancestry in snapshot mode, and filtered without source ancestry in filtered-snapshot mode
 - **`fork_integration`** - Integration and conflict resolution branch
 
 ### Workflows Installed
@@ -131,7 +142,7 @@ On success the setup issue is closed and the repository is ready for its first s
 | Name | Type | Purpose |
 |------|------|---------|
 | `UPSTREAM_REPO_URL` | Variable, set during initialization | Repository to synchronize |
-| `SYNC_MODE` | Variable, set during initialization | `filter`, `passthrough`, or `snapshot` upstream tree generation |
+| `SYNC_MODE` | Variable, set during initialization | `filter`, `filtered-snapshot`, `passthrough`, or `snapshot` upstream tree generation |
 | `INITIALIZATION_COMPLETE` | Variable, set during initialization | Enables fork workflows |
 | `MAVEN_PROFILE` | Optional variable | Overrides the `core,azure` default |
 | `SERVICE_NAME` | Optional variable | Overrides the repository-name image/service slug |

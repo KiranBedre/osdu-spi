@@ -23,7 +23,7 @@
 # Environment:
 #   GITHUB_TOKEN - issue comments when an issue number is given
 #   SYNC_MODE - passthrough isolates source tags for explicit publication;
-#               snapshot fetches no tags because source objects are not published
+#               snapshot modes fetch no tags because source objects are not published
 #   DEFAULT_BRANCH - output: written to GITHUB_ENV
 #   REPO_URL - output: written to GITHUB_ENV as the full clone URL
 
@@ -64,7 +64,7 @@ case "${SYNC_MODE:-filter}" in
     # those as if they came from the source upstream.
     git fetch upstream --prune --no-tags '+refs/tags/*:refs/upstream-tags/*'
     ;;
-  snapshot)
+  snapshot|filtered-snapshot)
     git fetch upstream --prune --no-tags
     ;;
   *)
