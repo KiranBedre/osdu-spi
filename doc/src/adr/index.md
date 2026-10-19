@@ -40,6 +40,7 @@ Decisions governing repository initialization, configuration, and security setup
 | [043](043-intact-upstream-passthrough.md) | **Intact Upstream Passthrough** | :material-trending-up: High |
 | [049](049-upstream-tip-snapshot.md) | **Upstream Tip Snapshot Mode** | :material-trending-up: High |
 | [050](050-filtered-upstream-snapshot.md) | **Filtered Upstream Snapshot Mode** | :material-trending-up: High |
+| [051](051-standalone-source-repositories.md) | **Standalone Source Repositories** | :material-trending-up: High |
 
 ### :material-sync: Upstream Synchronization & Integration
 

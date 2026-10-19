@@ -23,7 +23,7 @@
 #
 # Outputs (to GITHUB_OUTPUT):
 #   upstream_repo - validated identifier, empty on failure
-#   sync_mode - filter (default), filtered-snapshot, passthrough, or snapshot
+#   sync_mode - filter (default), filtered-snapshot, passthrough, snapshot, or standalone
 #   should_proceed - true/false
 
 set -euo pipefail
@@ -47,11 +47,35 @@ REPO=$(echo "$COMMENT_BODY" | head -1 | xargs)
 MODE_LINE=$(printf '%s\n' "$COMMENT_BODY" | sed -n '2p' | xargs)
 SYNC_MODE="filter"
 
+if [[ "$REPO" == "mode: standalone" ]]; then
+    if [[ -n "$MODE_LINE" ]]; then
+        echo "❌ Standalone initialization accepts only the single line \`mode: standalone\`." | gh issue comment "$ISSUE_NUMBER" --body-file -
+        echo "should_proceed=false" >> "${GITHUB_OUTPUT:-/dev/stdout}"
+        echo "upstream_repo=" >> "${GITHUB_OUTPUT:-/dev/stdout}"
+        echo "sync_mode=" >> "${GITHUB_OUTPUT:-/dev/stdout}"
+        exit 0
+    fi
+
+    echo "upstream_repo=" >> "${GITHUB_OUTPUT:-/dev/stdout}"
+    echo "sync_mode=standalone" >> "${GITHUB_OUTPUT:-/dev/stdout}"
+    echo "should_proceed=true" >> "${GITHUB_OUTPUT:-/dev/stdout}"
+
+    cat << EOF | gh issue comment "$ISSUE_NUMBER" --body-file -
+✅ **Standalone repository validated**
+
+No upstream repository will be configured. The repository owns its source and
+receives engineering-system updates through template sync.
+
+🔄 **Starting initialization process...**
+EOF
+    exit 0
+fi
+
 if [[ -n "$MODE_LINE" ]]; then
     if [[ "$MODE_LINE" =~ ^mode:[[:space:]]*(filter|filtered-snapshot|passthrough|snapshot)$ ]]; then
         SYNC_MODE="${BASH_REMATCH[1]}"
     else
-        echo "❌ Invalid mode. The optional second line must be \`mode: filter\`, \`mode: filtered-snapshot\`, \`mode: passthrough\`, or \`mode: snapshot\`." | gh issue comment "$ISSUE_NUMBER" --body-file -
+        echo "❌ Invalid mode. The optional second line must be \`mode: filter\`, \`mode: filtered-snapshot\`, \`mode: passthrough\`, or \`mode: snapshot\`. Use \`mode: standalone\` by itself for a repository with no upstream." | gh issue comment "$ISSUE_NUMBER" --body-file -
         echo "should_proceed=false" >> "${GITHUB_OUTPUT:-/dev/stdout}"
         echo "upstream_repo=" >> "${GITHUB_OUTPUT:-/dev/stdout}"
         echo "sync_mode=" >> "${GITHUB_OUTPUT:-/dev/stdout}"

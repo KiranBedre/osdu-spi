@@ -8,6 +8,16 @@ Welcome to the OSDU SPI Management Template! This template will help you maintai
 
 To complete the initialization of your fork management repository, please provide the upstream repository you want to fork from.
 
+For an original SPI-owned repository with no upstream, reply with:
+
+```
+mode: standalone
+```
+
+Standalone mode creates an empty source baseline. The repository owns all
+application source on `main`, while template synchronization continues to
+deliver the shared engineering system.
+
 ### Supported Formats
 
 **GitHub Repository:**
@@ -37,6 +47,9 @@ https://gitlab.company.com/group/repository-name
 - Configure upstream repository connection
 - Enable automated sync workflows
 - Set up security scanning and dependabot
+
+Standalone repositories skip the upstream connection and automated upstream
+sync. All other initialization and release controls remain enabled.
 
 ### Repositories without a provider/core split
 
