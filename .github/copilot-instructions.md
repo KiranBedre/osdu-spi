@@ -140,6 +140,7 @@ jobs:
 
 ### Environment Variables
 - `UPSTREAM_REPO_URL` - Repository variable naming the upstream repository
+- `SYNC_MODE=standalone` - Original repository with no upstream source
 - `GITHUB_TOKEN` - Authentication token
 
 ### Useful Commands
@@ -156,4 +157,3 @@ gh pr status
 # View issues
 gh issue list --label copilot
 ```
-

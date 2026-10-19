@@ -33,7 +33,7 @@ set -euo pipefail
 # Usage:
 #   .github/scripts/setup-fork-repo.sh \
 #     --repo <owner/repo> \
-#     --upstream <upstream-url> \
+#     (--upstream <upstream-url> | --standalone) \
 #     --vault-name <vault> \
 #     [--codeowners <@org/team>] \
 #     [--template-repo <url>] \
@@ -48,6 +48,7 @@ set -euo pipefail
 
 REPO=""
 UPSTREAM=""
+STANDALONE=false
 VAULT_NAME="${AZURE_VAULT_NAME:-}"
 TEMPLATE_REPO="https://github.com/Azure/osdu-spi.git"
 CODEOWNERS=""
@@ -57,11 +58,12 @@ DRY_RUN=false
 usage() {
   local exit_code="${1:-1}"
   cat <<EOF
-Usage: $0 --repo <owner/repo> --upstream <upstream-url> --vault-name <vault> [options]
+Usage: $0 --repo <owner/repo> (--upstream <upstream-url> | --standalone) --vault-name <vault> [options]
 
 Required:
   --repo <owner/repo>         Target GitHub repository (e.g., Azure/osdu-spi-partition)
   --upstream <url>            Upstream repository URL
+  --standalone                Original repository with no upstream source
   --vault-name <name>         Azure Key Vault name (or set AZURE_VAULT_NAME env var)
 
 Options:
@@ -91,6 +93,7 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --repo)           require_arg "$1" "${2-}"; REPO="${2-}"; shift 2 ;;
     --upstream)       require_arg "$1" "${2-}"; UPSTREAM="${2-}"; shift 2 ;;
+    --standalone)     STANDALONE=true; shift ;;
     --vault-name)     require_arg "$1" "${2-}"; VAULT_NAME="${2-}"; shift 2 ;;
     --codeowners)     require_arg "$1" "${2-}"; CODEOWNERS="${2-}"; shift 2 ;;
     --template-repo)  require_arg "$1" "${2-}"; TEMPLATE_REPO="${2-}"; shift 2 ;;
@@ -100,8 +103,13 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-if [[ -z "$REPO" || -z "$UPSTREAM" ]]; then
-  echo "ERROR: --repo and --upstream are required."
+if [[ -z "$REPO" ]]; then
+  echo "ERROR: --repo is required."
+  usage
+fi
+
+if { [[ -z "$UPSTREAM" ]] && ! $STANDALONE; } || { [[ -n "$UPSTREAM" ]] && $STANDALONE; }; then
+  echo "ERROR: provide exactly one of --upstream or --standalone."
   usage
 fi
 
@@ -143,7 +151,11 @@ if ! gh api "repos/$REPO" --jq '.full_name' &> /dev/null; then
 fi
 
 echo "    Target repo: $REPO"
-echo "    Upstream:    $UPSTREAM"
+if $STANDALONE; then
+  echo "    Source mode: standalone"
+else
+  echo "    Upstream:    $UPSTREAM"
+fi
 echo ""
 
 # ── Fetch secrets from Key Vault ──────────────────────────────────
@@ -192,7 +204,11 @@ set_variable() {
 # INITIALIZATION_COMPLETE is left to init-complete.yml; setting it here stops init from running.
 set_variable "COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS" "$FIREWALL_DOMAINS"
 set_variable "TEMPLATE_REPO_URL" "$TEMPLATE_REPO"
-set_variable "UPSTREAM_REPO_URL" "$UPSTREAM"
+if $STANDALONE; then
+  set_variable "SYNC_MODE" "standalone"
+else
+  set_variable "UPSTREAM_REPO_URL" "$UPSTREAM"
+fi
 if [[ -n "$CODEOWNERS" ]]; then
   set_variable "CODEOWNERS" "$CODEOWNERS"
 else
@@ -249,7 +265,7 @@ if [ "$DRY_RUN" = true ]; then
   echo "Variables that would be configured:"
   echo "  - COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS"
   echo "  - TEMPLATE_REPO_URL"
-  echo "  - UPSTREAM_REPO_URL"
+  $STANDALONE && echo "  - SYNC_MODE = standalone" || echo "  - UPSTREAM_REPO_URL"
   [[ -n "$CODEOWNERS" ]] && echo "  - CODEOWNERS"
   echo ""
   echo "Secrets that would be configured:"
@@ -267,7 +283,7 @@ else
   echo "Variables configured:"
   echo "  - COPILOT_AGENT_FIREWALL_ALLOW_LIST_ADDITIONS"
   echo "  - TEMPLATE_REPO_URL"
-  echo "  - UPSTREAM_REPO_URL"
+  $STANDALONE && echo "  - SYNC_MODE = standalone" || echo "  - UPSTREAM_REPO_URL"
   [[ -n "$CODEOWNERS" ]] && echo "  - CODEOWNERS"
   echo ""
   echo "Secrets configured:"

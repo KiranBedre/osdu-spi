@@ -51,6 +51,16 @@ run_validation $'https://community.opengroup.org/osdu/platform/domain-data-mgmt-
 [ "$(value "$TMP/filtered-snapshot.out" sync_mode)" = "filtered-snapshot" ] || die "filtered-snapshot mode not exported"
 ok "filtered-snapshot initialization input validated"
 
+run_validation 'mode: standalone' "$TMP/standalone.out"
+[ "$(value "$TMP/standalone.out" should_proceed)" = "true" ] || die "standalone mode rejected"
+[ "$(value "$TMP/standalone.out" sync_mode)" = "standalone" ] || die "standalone mode not exported"
+[ -z "$(value "$TMP/standalone.out" upstream_repo)" ] || die "standalone mode exported an upstream repository"
+ok "standalone initialization input validated"
+
+run_validation $'mode: standalone\nowner/service' "$TMP/standalone-invalid.out"
+[ "$(value "$TMP/standalone-invalid.out" should_proceed)" = "false" ] || die "standalone mode accepted an upstream repository"
+ok "standalone initialization rejects upstream input"
+
 run_validation $'owner/service\nmode: mirror' "$TMP/invalid.out"
 [ "$(value "$TMP/invalid.out" should_proceed)" = "false" ] || die "customer mirror mode accepted by first-tier initialization"
 [ -z "$(value "$TMP/invalid.out" upstream_repo)" ] || die "invalid mode exported an upstream repository"
@@ -138,6 +148,8 @@ grep -q 'Passthrough mode has no fork-owned seed trees' "$WORKFLOW" || die "pass
 grep -q 'Snapshot mode keeps the upstream tip tree intact without its ancestry' "$WORKFLOW" || die "snapshot generation branch missing"
 grep -q 'Snapshot mode has no fork-owned seed trees' "$WORKFLOW" || die "snapshot still seeds Maven trees"
 grep -q 'Filtered-snapshot mode filters the upstream tip without its ancestry' "$WORKFLOW" || die "filtered-snapshot generation branch missing"
+grep -q 'Standalone mode starts from an empty source baseline' "$WORKFLOW" || die "standalone source baseline missing"
+grep -q 'Standalone mode owns source directly on main' "$WORKFLOW" || die "standalone mode still seeds upstream trees"
 if grep -q 'Filtered-snapshot mode has no fork-owned seed trees' "$WORKFLOW"; then
   die "filtered-snapshot must preserve filter-mode Azure seeding"
 fi
@@ -151,6 +163,9 @@ if grep -q "vars.SYNC_MODE != 'snapshot'" "$TEMPLATE_SYNC"; then
 fi
 if grep -q "vars.SYNC_MODE != 'filtered-snapshot'" "$TEMPLATE_SYNC"; then
   die "filtered-snapshot must continue receiving template updates"
+fi
+if grep -q "vars.SYNC_MODE != 'standalone'" "$TEMPLATE_SYNC"; then
+  die "standalone repositories must continue receiving template updates"
 fi
 grep -q -- '--allow-unrelated-histories -X theirs' "$CASCADE" \
   || die "snapshot cascade does not support destination-only ancestry"

@@ -69,6 +69,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set UPSTREAM_REPO_URL Variable
+        if: steps.validate.outputs.sync_mode != 'standalone'
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}  # App token: setting variables needs admin
         run: |
@@ -120,6 +121,7 @@ jobs:
           pull_rebase: 'false'
 
       - name: Upstream Repository
+        if: needs.validate_and_setup.outputs.sync_mode != 'standalone'
         uses: ./.github/local-actions/init-helpers
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -137,11 +139,13 @@ jobs:
         run: |
           VARIABLES_SUCCESS=true
           if [ -n "$GH_TOKEN" ]; then
-            echo "Setting UPSTREAM_REPO_URL variable to: $REPO_URL"
-            echo "URL length: ${#REPO_URL}"
-            if ! GH_TOKEN=$GH_TOKEN gh variable set UPSTREAM_REPO_URL --body "$REPO_URL"; then
-              echo "Failed to set UPSTREAM_REPO_URL variable"
-              VARIABLES_SUCCESS=false
+            if [ "${{ needs.validate_and_setup.outputs.sync_mode }}" != "standalone" ]; then
+              echo "Setting UPSTREAM_REPO_URL variable to: $REPO_URL"
+              echo "URL length: ${#REPO_URL}"
+              if ! GH_TOKEN=$GH_TOKEN gh variable set UPSTREAM_REPO_URL --body "$REPO_URL"; then
+                echo "Failed to set UPSTREAM_REPO_URL variable"
+                VARIABLES_SUCCESS=false
+              fi
             fi
             if ! GH_TOKEN=$GH_TOKEN gh variable set SYNC_MODE --body "${{ needs.validate_and_setup.outputs.sync_mode }}"; then
               echo "Failed to set SYNC_MODE variable"
@@ -187,50 +191,57 @@ jobs:
           # for this whole step (the branch is built through plumbing), which is what makes
           # the hand-planted test below valid.
           FILTER_CONFIG="$RUNNER_TEMP/upstream-filter.yml"
-          if [ "$SYNC_MODE" = "passthrough" ]; then
-            echo "::notice::Passthrough mode keeps the upstream tree intact"
-          elif [ "$SYNC_MODE" = "snapshot" ]; then
-            echo "::notice::Snapshot mode keeps the upstream tip tree intact without its ancestry"
+          if [ "$SYNC_MODE" = "standalone" ]; then
+            echo "::notice::Standalone mode starts from an empty source baseline"
+            EMPTY_TREE=$(git mktree </dev/null)
+            STANDALONE_COMMIT=$(printf '%s\n' "chore: initialize standalone source baseline" | git commit-tree "$EMPTY_TREE")
+            git branch -f fork_upstream "$STANDALONE_COMMIT"
           else
-            if [ "$SYNC_MODE" = "filtered-snapshot" ]; then
-              echo "::notice::Filtered-snapshot mode filters the upstream tip without its ancestry"
-            fi
-            if [ -f ".github/upstream-filter.yml" ]; then
-              echo "::notice::Using the hand-planted .github/upstream-filter.yml from main"
-              cp ".github/upstream-filter.yml" "$FILTER_CONFIG"
+            if [ "$SYNC_MODE" = "passthrough" ]; then
+              echo "::notice::Passthrough mode keeps the upstream tree intact"
+            elif [ "$SYNC_MODE" = "snapshot" ]; then
+              echo "::notice::Snapshot mode keeps the upstream tip tree intact without its ancestry"
             else
-              # The config's service key is the Maven module prefix. Upstream names it in
-              # provider/<prefix>-azure; the repository name only agrees by convention.
-              SERVICE_SLUG=$(git ls-tree --name-only "upstream/$DEFAULT_BRANCH" provider/ 2>/dev/null \
-                | sed -n 's|^provider/\(.*\)-azure$|\1|p')
-              if [ "$(printf '%s\n' "$SERVICE_SLUG" | grep -c .)" != "1" ]; then
-                SERVICE_SLUG=$(basename "${REPO_URL%.git}")
+              if [ "$SYNC_MODE" = "filtered-snapshot" ]; then
+                echo "::notice::Filtered-snapshot mode filters the upstream tip without its ancestry"
               fi
-              echo "::notice::Substituting filter config template for service: $SERVICE_SLUG"
-              SERVICE_ESCAPED=${SERVICE_SLUG//&/\\&}
-              sed "s|<service>|$SERVICE_ESCAPED|g" ".github/fork-resources/upstream-filter.yml" > "$FILTER_CONFIG"
+              if [ -f ".github/upstream-filter.yml" ]; then
+                echo "::notice::Using the hand-planted .github/upstream-filter.yml from main"
+                cp ".github/upstream-filter.yml" "$FILTER_CONFIG"
+              else
+                # The config's service key is the Maven module prefix. Upstream names it in
+                # provider/<prefix>-azure; the repository name only agrees by convention.
+                SERVICE_SLUG=$(git ls-tree --name-only "upstream/$DEFAULT_BRANCH" provider/ 2>/dev/null \
+                  | sed -n 's|^provider/\(.*\)-azure$|\1|p')
+                if [ "$(printf '%s\n' "$SERVICE_SLUG" | grep -c .)" != "1" ]; then
+                  SERVICE_SLUG=$(basename "${REPO_URL%.git}")
+                fi
+                echo "::notice::Substituting filter config template for service: $SERVICE_SLUG"
+                SERVICE_ESCAPED=${SERVICE_SLUG//&/\\&}
+                sed "s|<service>|$SERVICE_ESCAPED|g" ".github/fork-resources/upstream-filter.yml" > "$FILTER_CONFIG"
+              fi
             fi
-          fi
-          echo "FILTER_CONFIG=$FILTER_CONFIG" >> $GITHUB_ENV
+            echo "FILTER_CONFIG=$FILTER_CONFIG" >> $GITHUB_ENV
 
-          # Generate the filtered fork_upstream tree (ADR-038). A branch left by a partial
-          # run becomes the base of an incremental generation, so a retry converges.
-          UPSTREAM_SHA=$(git rev-parse "upstream/$DEFAULT_BRANCH")
-          BASE_SHA=$(git rev-parse -q --verify origin/fork_upstream || true)
-          bash .github/actions/upstream-filter/generate-branch.sh \
-            "$BASE_SHA" "$UPSTREAM_SHA" "$FILTER_CONFIG" "$RUNNER_TEMP/generate-branch.env"
-          . "$RUNNER_TEMP/generate-branch.env"
+            # Generate the filtered fork_upstream tree (ADR-038). A branch left by a partial
+            # run becomes the base of an incremental generation, so a retry converges.
+            UPSTREAM_SHA=$(git rev-parse "upstream/$DEFAULT_BRANCH")
+            BASE_SHA=$(git rev-parse -q --verify origin/fork_upstream || true)
+            bash .github/actions/upstream-filter/generate-branch.sh \
+              "$BASE_SHA" "$UPSTREAM_SHA" "$FILTER_CONFIG" "$RUNNER_TEMP/generate-branch.env"
+            . "$RUNNER_TEMP/generate-branch.env"
 
-          if [ "$has_changes" = "true" ]; then
-            git branch -f fork_upstream "$commit"
-          else
-            git branch -f fork_upstream "$BASE_SHA"
-          fi
+            if [ "$has_changes" = "true" ]; then
+              git branch -f fork_upstream "$commit"
+            else
+              git branch -f fork_upstream "$BASE_SHA"
+            fi
 
-          if { [ "$SYNC_MODE" = "filter" ] || [ "$SYNC_MODE" = "filtered-snapshot" ]; } \
-             && [ -n "$(git ls-tree fork_upstream -- provider devops)" ]; then
-            echo "::error::Generated fork_upstream still contains provider/ or devops/"
-            exit 1
+            if { [ "$SYNC_MODE" = "filter" ] || [ "$SYNC_MODE" = "filtered-snapshot" ]; } \
+               && [ -n "$(git ls-tree fork_upstream -- provider devops)" ]; then
+              echo "::error::Generated fork_upstream still contains provider/ or devops/"
+              exit 1
+            fi
           fi
 
           echo "::notice::Pushing fork_upstream branch..."
@@ -299,6 +310,9 @@ jobs:
             exit 0
           elif [ "$SYNC_MODE" = "snapshot" ]; then
             echo "::notice::Snapshot mode has no fork-owned seed trees"
+            exit 0
+          elif [ "$SYNC_MODE" = "standalone" ]; then
+            echo "::notice::Standalone mode owns source directly on main"
             exit 0
           fi
 
@@ -488,7 +502,11 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ "$VARIABLES_SUCCESS" = "true" ]; then
-            VARIABLE_STATUS="**Repository Variables:** UPSTREAM_REPO_URL and GitHub Copilot firewall allowlist configured"
+            if [ "${{ needs.validate_and_setup.outputs.sync_mode }}" = "standalone" ]; then
+              VARIABLE_STATUS="**Repository Variables:** standalone source mode and GitHub Copilot firewall allowlist configured"
+            else
+              VARIABLE_STATUS="**Repository Variables:** UPSTREAM_REPO_URL and GitHub Copilot firewall allowlist configured"
+            fi
           else
             VARIABLE_STATUS="⚠️ **Repository Variables:** Requires manual setup (including Copilot firewall allowlist)"
           fi
