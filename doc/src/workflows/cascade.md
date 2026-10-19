@@ -26,6 +26,13 @@ The workflow:
 6. **Creates production PR** - Opens a temporary `release/upstream-*` PR to `main`
 7. **Provides status updates** - Comments on the original sync issue with progress reports and next steps
 
+Snapshot modes can have no common Git ancestor with a pre-existing or
+squash-merged `main`. Their integration merge explicitly allows unrelated
+histories and prefers the generated upstream tree for overlapping paths.
+Paths absent from `fork_upstream`, including fork-owned `.github/`, `data/`,
+and `devops/`, remain on `fork_integration`. Any merge failure that produces
+no conflict entries stops the cascade instead of being reported as success.
+
 ## Three-Branch Progression
 
 ```mermaid

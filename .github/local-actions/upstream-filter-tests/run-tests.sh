@@ -644,6 +644,21 @@ FILTERED_SNAP_OUT2="$TMP/filtered-snapshot2.env"
 [ "${has_changes:-}" = "false" ] || die "filtered-snapshot repeat synchronization did not converge"
 ok "filtered-snapshot mode: filtered tree, recorded revisions, no source ancestry, repeat convergence"
 
+note "cascade: an unrelated filtered snapshot replaces upstream-owned paths and keeps fork-owned paths"
+git -C "$PLUMB" checkout -q --orphan filtered-snapshot-integration
+git -C "$PLUMB" rm -rqf .
+echo "fork-owned" > "$PLUMB/fork-only.txt"
+git -C "$PLUMB" add -A
+git -C "$PLUMB" commit -qm "fork integration"
+git -C "$PLUMB" merge -q "$FILTERED_SNAP_ROOT" --allow-unrelated-histories -X theirs --no-edit
+[ -f "$PLUMB/fork-only.txt" ] || die "filtered-snapshot cascade removed a fork-owned path"
+[ -f "$PLUMB/demo-core/pom.xml" ] || die "filtered-snapshot cascade omitted an upstream-owned path"
+[ ! -d "$PLUMB/provider" ] || die "filtered-snapshot cascade restored a filtered provider tree"
+if git -C "$PLUMB" merge-base --is-ancestor "$UP_SHA" HEAD; then
+  die "filtered-snapshot cascade made the source commit reachable"
+fi
+ok "unrelated snapshot ancestry merges without losing fork-owned paths"
+
 RC=0
 (cd "$PLUMB" && SYNC_MODE=unknown bash "$(dirname "$ENGINE")/generate-branch.sh" "" "$UP_SHA" "$CONFIG" "$TMP/unknown.env") >/dev/null 2>&1 || RC=$?
 [ "$RC" -eq 2 ] || die "unknown sync mode must halt with exit 2"

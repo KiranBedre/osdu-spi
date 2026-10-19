@@ -5,6 +5,7 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 VALIDATE="$HERE/../validate-upstream-repo/action.sh"
 WORKFLOW="$HERE/../../workflows/init-complete.yml"
 TEMPLATE_SYNC="$HERE/../../template-workflows/sync-template.yml"
+CASCADE="$HERE/../../template-workflows/cascade.yml"
 SETUP_UPSTREAM="$HERE/../init-helpers/setup-upstream.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
@@ -151,6 +152,10 @@ fi
 if grep -q "vars.SYNC_MODE != 'filtered-snapshot'" "$TEMPLATE_SYNC"; then
   die "filtered-snapshot must continue receiving template updates"
 fi
+grep -q -- '--allow-unrelated-histories -X theirs' "$CASCADE" \
+  || die "snapshot cascade does not support destination-only ancestry"
+grep -q 'Upstream merge failed without producing conflicts' "$CASCADE" \
+  || die "cascade does not fail closed on a non-conflict merge error"
 ok "workflow preserves history, tags, and the template delivery channel"
 
 printf '\nAll initialization mode harness checks passed.\n'
