@@ -74,8 +74,10 @@ echo "dependency" > "$TMP/work/app/node_modules/example/index.js"
   PATH="$TMP/bin:$PATH" WORKING_DIRECTORY=app RUNTIME_ARCHIVE="$TMP/runtime/node-runtime.tar.gz" \
     "$ACTION/package-runtime.sh"
 )
-grep -q '^--prefix .*/app ci --omit=dev$' "$TMP/npm.log" \
-  || die "runtime dependencies were not clean-installed"
+grep -q '^--prefix .*/app prune --omit=dev$' "$TMP/npm.log" \
+  || die "development dependencies were not pruned from the runtime package"
+! grep -q ' ci --omit=dev$' "$TMP/npm.log" \
+  || die "runtime packaging must not reinstall and rerun lifecycle scripts"
 rm -rf "$TMP/work/app/dist" "$TMP/work/app/node_modules"
 (
   cd "$TMP/work"
