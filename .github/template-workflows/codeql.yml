@@ -110,7 +110,10 @@ jobs:
             LANGUAGES=$(echo "$LANGUAGES" | jq -c '. + ["python"]')
           fi
 
-          if [ -f "package.json" ] || find . \( -name "*.js" -o -name "*.ts" \) \
+          if [ -f "package.json" ] || find . \( \
+               -name "*.js" -o -name "*.mjs" -o -name "*.cjs" \
+               -o -name "*.ts" -o -name "*.mts" -o -name "*.cts" \
+             \) \
              -not -path "./.*" \
              -not -path "*/build/*" \
              -not -path "*/build-*/*" \

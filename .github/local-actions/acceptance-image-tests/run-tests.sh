@@ -217,10 +217,10 @@ ok "missing SERVICE_NAME fails"
 note "Dockerfile contract: suite paths, select stage, entrypoint, argv default"
 grep -q '^ARG SUITE_DIRS$' "$DOCKERFILE" || die "SUITE_DIRS build arg missing"
 grep -q 'SUITE_DIRS=${{ steps.suite.outputs.suite_dirs }}' "$HERE/../../actions/acceptance-image/action.yml" || die "action must pass every suite path"
-grep -q "archetype == 'native-container-azure'.*'devops/azure/Dockerfile'" "$HERE/../../actions/acceptance-image/action.yml" \
-  || die "action does not select the native service Dockerfile"
-grep -q "target:.*archetype == 'native-container-azure'.*'acceptance'" "$HERE/../../actions/acceptance-image/action.yml" \
-  || die "action does not select the native acceptance target"
+grep -q "test_type == 'script'.*'build/script-acceptance.Dockerfile'.*archetype == 'native-container-azure'" "$HERE/../../actions/acceptance-image/action.yml" \
+  || die "script suites must select the canonical image before the native fallback"
+grep -q "target:.*archetype == 'native-container-azure'.*test_type != 'script'.*'acceptance'" "$HERE/../../actions/acceptance-image/action.yml" \
+  || die "only non-script native suites may select the native acceptance target"
 grep -q ' AS select$' "$DOCKERFILE" || die "select stage missing: the service source must not reach the image"
 grep -q '^COPY --from=select /suite/ /suite/$' "$DOCKERFILE" || die "maven stage must copy only the selected suites"
 grep -q '/suite/.default-suite-dir' "$DOCKERFILE" || die "the default suite must be recorded for the entrypoint"
