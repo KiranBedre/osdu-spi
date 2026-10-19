@@ -131,6 +131,9 @@ jobs:
           queries: security-extended
           build-mode: ${{ matrix.language == 'go' && 'autobuild' || 'none' }}
           config: |
+            paths:
+              - .
+              - .spi
             paths-ignore:
               - '**/build/**'
               - '**/build-*/**'

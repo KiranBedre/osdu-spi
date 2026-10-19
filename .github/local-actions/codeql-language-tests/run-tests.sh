@@ -17,6 +17,7 @@ set -euo pipefail
 
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DETECTOR="$HERE/../../actions/codeql-languages/detect.sh"
+WORKFLOW="$HERE/../../template-workflows/codeql.yml"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -56,5 +57,10 @@ assert_languages "$TMP/template-tooling" '["java-kotlin","actions"]'
 mkdir -p "$TMP/multiple/.spi"
 touch "$TMP/multiple/.spi/check.py" "$TMP/multiple/.spi/check.mjs"
 assert_languages "$TMP/multiple" '["python","javascript-typescript","actions"]'
+
+grep -q '^              - \.spi$' "$WORKFLOW" || {
+  printf 'CodeQL workflow must scan source under .spi\n' >&2
+  exit 1
+}
 
 printf 'CodeQL language detection tests passed\n'
