@@ -23,7 +23,7 @@
 #
 # Outputs (to GITHUB_OUTPUT):
 #   upstream_repo - validated identifier, empty on failure
-#   sync_mode - filter (default), passthrough, or snapshot
+#   sync_mode - filter (default), filtered-snapshot, passthrough, or snapshot
 #   should_proceed - true/false
 
 set -euo pipefail
@@ -48,10 +48,10 @@ MODE_LINE=$(printf '%s\n' "$COMMENT_BODY" | sed -n '2p' | xargs)
 SYNC_MODE="filter"
 
 if [[ -n "$MODE_LINE" ]]; then
-    if [[ "$MODE_LINE" =~ ^mode:[[:space:]]*(filter|passthrough|snapshot)$ ]]; then
+    if [[ "$MODE_LINE" =~ ^mode:[[:space:]]*(filter|filtered-snapshot|passthrough|snapshot)$ ]]; then
         SYNC_MODE="${BASH_REMATCH[1]}"
     else
-        echo "❌ Invalid mode. The optional second line must be \`mode: filter\`, \`mode: passthrough\`, or \`mode: snapshot\`." | gh issue comment "$ISSUE_NUMBER" --body-file -
+        echo "❌ Invalid mode. The optional second line must be \`mode: filter\`, \`mode: filtered-snapshot\`, \`mode: passthrough\`, or \`mode: snapshot\`." | gh issue comment "$ISSUE_NUMBER" --body-file -
         echo "should_proceed=false" >> "${GITHUB_OUTPUT:-/dev/stdout}"
         echo "upstream_repo=" >> "${GITHUB_OUTPUT:-/dev/stdout}"
         echo "sync_mode=" >> "${GITHUB_OUTPUT:-/dev/stdout}"

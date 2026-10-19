@@ -39,6 +39,7 @@ Decisions governing repository initialization, configuration, and security setup
 | [016](016-initialization-security-handling.md) | **Initialization Security Handling** | :material-minus: Medium |
 | [043](043-intact-upstream-passthrough.md) | **Intact Upstream Passthrough** | :material-trending-up: High |
 | [049](049-upstream-tip-snapshot.md) | **Upstream Tip Snapshot Mode** | :material-trending-up: High |
+| [050](050-filtered-upstream-snapshot.md) | **Filtered Upstream Snapshot Mode** | :material-trending-up: High |
 
 ### :material-sync: Upstream Synchronization & Integration
 

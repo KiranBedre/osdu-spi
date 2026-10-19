@@ -606,6 +606,44 @@ SNAP_OUT2="$TMP/snapshot2.env"
 [ "${has_changes:-}" = "false" ] || die "snapshot repeat synchronization did not converge"
 ok "snapshot mode: intact tree, recorded SHA, no source ancestry, repeat convergence"
 
+note "plumbing: filtered-snapshot mode filters the tip without source ancestry"
+FILTERED_SNAP_OUT="$TMP/filtered-snapshot.env"
+(cd "$PLUMB" && SYNC_MODE=filtered-snapshot bash "$(dirname "$ENGINE")/generate-branch.sh" "" "$UP_SHA" "$CONFIG" "$FILTERED_SNAP_OUT")
+# shellcheck disable=SC1090
+. "$FILTERED_SNAP_OUT"
+[ "${has_changes:-}" = "true" ] || die "filtered-snapshot first generation reported no changes"
+[ "$tree" = "$TREE1" ] || die "filtered-snapshot tree differs from filter mode"
+grep -q '^report=' "$FILTERED_SNAP_OUT" || die "filtered-snapshot omitted the filter report"
+[ "$filter_rev" != "filtered-snapshot" ] || die "filtered-snapshot skipped the filter engine"
+FILTERED_SNAP_ROOT="$commit"
+FILTERED_SNAP_PARENTS=$(git -C "$PLUMB" rev-list --parents -n 1 "$FILTERED_SNAP_ROOT" | wc -w | tr -d ' ')
+[ "$FILTERED_SNAP_PARENTS" = "1" ] || die "filtered-snapshot first generation is not a root commit"
+git -C "$PLUMB" cat-file -p "$FILTERED_SNAP_ROOT" | grep -q "Upstream-Sha: $UP_SHA" || die "filtered-snapshot omitted the source SHA trailer"
+git -C "$PLUMB" cat-file -p "$FILTERED_SNAP_ROOT" | grep -q "Filter-Rev: $filter_rev" || die "filtered-snapshot omitted the filter revision trailer"
+git -C "$PLUMB" cat-file -p "$FILTERED_SNAP_ROOT" | grep -q "chore: generate filtered upstream snapshot" || die "filtered-snapshot commit message is wrong"
+if git -C "$PLUMB" merge-base --is-ancestor "$UP_SHA" "$FILTERED_SNAP_ROOT"; then
+  die "filtered-snapshot made the source commit reachable"
+fi
+
+FILTERED_SNAP_BASE_OUT="$TMP/filtered-snapshot-base.env"
+(cd "$PLUMB" && SYNC_MODE=filtered-snapshot bash "$(dirname "$ENGINE")/generate-branch.sh" "$BASE_SHA" "$UP_SHA" "$CONFIG" "$FILTERED_SNAP_BASE_OUT")
+# shellcheck disable=SC1090
+. "$FILTERED_SNAP_BASE_OUT"
+FILTERED_SNAP_WITH_BASE="$commit"
+FILTERED_SNAP_PARENTS=$(git -C "$PLUMB" rev-list --parents -n 1 "$FILTERED_SNAP_WITH_BASE" | wc -w | tr -d ' ')
+[ "$FILTERED_SNAP_PARENTS" = "2" ] || die "incremental filtered-snapshot does not have exactly one parent"
+[ "$(git -C "$PLUMB" rev-parse "$FILTERED_SNAP_WITH_BASE^")" = "$BASE_SHA" ] || die "incremental filtered-snapshot parent is not the prior fork_upstream tip"
+if git -C "$PLUMB" merge-base --is-ancestor "$UP_SHA" "$FILTERED_SNAP_WITH_BASE"; then
+  die "incremental filtered-snapshot made the source commit reachable"
+fi
+
+FILTERED_SNAP_OUT2="$TMP/filtered-snapshot2.env"
+(cd "$PLUMB" && SYNC_MODE=filtered-snapshot bash "$(dirname "$ENGINE")/generate-branch.sh" "$FILTERED_SNAP_ROOT" "$UP_SHA" "$CONFIG" "$FILTERED_SNAP_OUT2")
+# shellcheck disable=SC1090
+. "$FILTERED_SNAP_OUT2"
+[ "${has_changes:-}" = "false" ] || die "filtered-snapshot repeat synchronization did not converge"
+ok "filtered-snapshot mode: filtered tree, recorded revisions, no source ancestry, repeat convergence"
+
 RC=0
 (cd "$PLUMB" && SYNC_MODE=unknown bash "$(dirname "$ENGINE")/generate-branch.sh" "" "$UP_SHA" "$CONFIG" "$TMP/unknown.env") >/dev/null 2>&1 || RC=$?
 [ "$RC" -eq 2 ] || die "unknown sync mode must halt with exit 2"

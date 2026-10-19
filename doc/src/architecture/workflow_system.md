@@ -65,10 +65,11 @@ graph TD
 
     ---
 
-    Daily synchronization that filters the upstream tip into a reproducible provider-less tree, prevents duplicate PRs, and derives the meta commit and PR body from the upstream commit range
+    Daily synchronization that produces a reproducible upstream tree, prevents duplicate PRs, and derives the meta commit and PR body from the upstream commit range
 
     - **Trigger**: Scheduled daily at midnight UTC, or manual dispatch
-    - **Transform**: Keeps shared code, removes provider/deployment source, and injects references to fork-owned Azure modules
+    - **Transform**: Filters conventional services, or preserves intact trees when the selected sync mode requires it
+    - **Ancestry**: Preserves source history by default; snapshot modes retain provenance trailers without attaching the source graph
     - **Safety**: Halts when shared upstream content is unclassified or an expected kept path disappears
     - **Decision Logic**: Updates existing branches when upstream advances, prevents duplicates for same SHA
     - **Integration**: Three-branch safety pattern (fork_upstream → fork_integration → main)

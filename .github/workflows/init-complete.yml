@@ -191,20 +191,25 @@ jobs:
             echo "::notice::Passthrough mode keeps the upstream tree intact"
           elif [ "$SYNC_MODE" = "snapshot" ]; then
             echo "::notice::Snapshot mode keeps the upstream tip tree intact without its ancestry"
-          elif [ -f ".github/upstream-filter.yml" ]; then
-            echo "::notice::Using the hand-planted .github/upstream-filter.yml from main"
-            cp ".github/upstream-filter.yml" "$FILTER_CONFIG"
           else
-            # The config's service key is the Maven module prefix. Upstream names it in
-            # provider/<prefix>-azure; the repository name only agrees by convention.
-            SERVICE_SLUG=$(git ls-tree --name-only "upstream/$DEFAULT_BRANCH" provider/ 2>/dev/null \
-              | sed -n 's|^provider/\(.*\)-azure$|\1|p')
-            if [ "$(printf '%s\n' "$SERVICE_SLUG" | grep -c .)" != "1" ]; then
-              SERVICE_SLUG=$(basename "${REPO_URL%.git}")
+            if [ "$SYNC_MODE" = "filtered-snapshot" ]; then
+              echo "::notice::Filtered-snapshot mode filters the upstream tip without its ancestry"
             fi
-            echo "::notice::Substituting filter config template for service: $SERVICE_SLUG"
-            SERVICE_ESCAPED=${SERVICE_SLUG//&/\\&}
-            sed "s|<service>|$SERVICE_ESCAPED|g" ".github/fork-resources/upstream-filter.yml" > "$FILTER_CONFIG"
+            if [ -f ".github/upstream-filter.yml" ]; then
+              echo "::notice::Using the hand-planted .github/upstream-filter.yml from main"
+              cp ".github/upstream-filter.yml" "$FILTER_CONFIG"
+            else
+              # The config's service key is the Maven module prefix. Upstream names it in
+              # provider/<prefix>-azure; the repository name only agrees by convention.
+              SERVICE_SLUG=$(git ls-tree --name-only "upstream/$DEFAULT_BRANCH" provider/ 2>/dev/null \
+                | sed -n 's|^provider/\(.*\)-azure$|\1|p')
+              if [ "$(printf '%s\n' "$SERVICE_SLUG" | grep -c .)" != "1" ]; then
+                SERVICE_SLUG=$(basename "${REPO_URL%.git}")
+              fi
+              echo "::notice::Substituting filter config template for service: $SERVICE_SLUG"
+              SERVICE_ESCAPED=${SERVICE_SLUG//&/\\&}
+              sed "s|<service>|$SERVICE_ESCAPED|g" ".github/fork-resources/upstream-filter.yml" > "$FILTER_CONFIG"
+            fi
           fi
           echo "FILTER_CONFIG=$FILTER_CONFIG" >> $GITHUB_ENV
 
@@ -222,7 +227,8 @@ jobs:
             git branch -f fork_upstream "$BASE_SHA"
           fi
 
-          if [ "$SYNC_MODE" = "filter" ] && [ -n "$(git ls-tree fork_upstream -- provider devops)" ]; then
+          if { [ "$SYNC_MODE" = "filter" ] || [ "$SYNC_MODE" = "filtered-snapshot" ]; } \
+             && [ -n "$(git ls-tree fork_upstream -- provider devops)" ]; then
             echo "::error::Generated fork_upstream still contains provider/ or devops/"
             exit 1
           fi
