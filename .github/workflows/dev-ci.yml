@@ -240,8 +240,14 @@ jobs:
             "Untrusted companion image validation must never push"
           assert_yq '.jobs."docker-push".steps[] | select(.id == "companion") | .with.push == "true"' "$VALIDATE" \
             "Trusted publication must push the declared companion image"
+          assert_yq '.jobs."docker-push".steps[] | select(.name == "Download Airflow DAG artifact") | .if | contains("companion_kind == '"'"'airflow-dag'"'"'")' "$VALIDATE" \
+            "Trusted publication must download a declared companion DAG artifact"
+          assert_yq '.jobs."docker-push".steps[] | select(.id == "dag") | .if | contains("companion_kind == '"'"'airflow-dag'"'"'")' "$VALIDATE" \
+            "Trusted publication must push a declared companion DAG artifact"
           assert_yq '.jobs."retag-image".steps[] | select(.name == "Tag companion image with semver") | .run | contains("package_suffix")' "$RELEASE" \
             "Release publication must retag the descriptor-owned companion package"
+          assert_yq '.jobs."retag-image".steps[] | select(.name == "Tag Airflow DAG artifact with semver") | .if | contains("companion_kind == '"'"'airflow-dag'"'"'")' "$RELEASE" \
+            "Release publication must retag a declared companion DAG artifact"
           assert_yq '.jobs.retention.steps[] | select(.name == "Prune old image tags") | .run | contains("COMPANION_SUFFIX")' "$RETENTION" \
             "GHCR retention must prune the descriptor-owned companion package"
 

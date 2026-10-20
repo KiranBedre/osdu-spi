@@ -227,13 +227,17 @@ jobs:
           RESOLVER: .github/actions/acceptance-resolver/resolve.py
 
       - name: "Set up ORAS"
-        if: steps.suite.outputs.archetype == 'airflow-dag-azure'
+        if: >-
+          steps.suite.outputs.archetype == 'airflow-dag-azure' ||
+          steps.suite.outputs.companion_kind == 'airflow-dag'
         uses: oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6  # v1
         with:
           version: 1.3.0
 
       - name: "Tag Airflow DAG artifact with semver"
-        if: steps.suite.outputs.archetype == 'airflow-dag-azure'
+        if: >-
+          steps.suite.outputs.archetype == 'airflow-dag-azure' ||
+          steps.suite.outputs.companion_kind == 'airflow-dag'
         env:
           VERSION: ${{ needs.release-please.outputs.version }}
           REPO: ${{ steps.service_tag.outputs.repo }}
