@@ -42,6 +42,9 @@ jobs:
       - name: Run Python build harness
         run: bash .github/local-actions/python-build-tests/run-tests.sh
 
+      - name: Run DAG artifact harness
+        run: bash .github/local-actions/dag-artifact-tests/run-tests.sh
+
       - name: Run Node build harness
         run: bash .github/local-actions/node-build-tests/run-tests.sh
 
