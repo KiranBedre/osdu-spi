@@ -92,5 +92,9 @@ grep -q "'source-direct'" "$HERE/../../template-workflows/validate.yml" \
   || die "validation workflow must select direct Python source"
 grep -q "cut -d. -f1,2" "$ACTION/action.yml" \
   || die "Airflow constraints must use the Python major.minor version"
+grep -q 'uses: ./.github/actions/dag-artifact' "$ACTION/action.yml" \
+  || die "Airflow builds must verify their DAG artifact"
+grep -q 'name: airflow-dag-artifact' "$ACTION/action.yml" \
+  || die "Airflow builds must upload their DAG artifact"
 
 echo "ok: Python build action contract"
