@@ -75,7 +75,11 @@ resolve_suite "$WS2" "$TMP/out2.txt" SERVICE_NAME=demo >/dev/null
 [ "$(output_value "$TMP/out2.txt" suite_dir)" = "custom-tests" ] || die "descriptor override lost"
 [ "$(output_value "$TMP/out2.txt" suite_dirs)" = "custom-tests" ] || die "single suite must list itself"
 [ "$(output_value "$TMP/out2.txt" buildable)" = "true" ] || die "override suite must be buildable"
+[ "$(output_value "$TMP/out2.txt" companion_kind)" = "" ] || die "service without a companion must report an empty companion kind"
 ok "descriptor override honored"
+
+grep -q "service_config.*companion.*kind" "$RESOLVE_SUITE" \
+  || die "suite resolution must expose the companion kind for release routing"
 
 note "named suites: every declared path is baked, acceptance first"
 WS2B="$TMP/ws-suites"

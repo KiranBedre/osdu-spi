@@ -652,7 +652,9 @@ jobs:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: "Download Airflow DAG artifact"
-        if: needs.check-repo-state.outputs.archetype == 'airflow-dag-azure'
+        if: >-
+          needs.check-repo-state.outputs.archetype == 'airflow-dag-azure' ||
+          needs.check-repo-state.outputs.companion_kind == 'airflow-dag'
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093  # v4.3.0
         with:
           name: airflow-dag-artifact
@@ -705,7 +707,9 @@ jobs:
 
       - name: "Airflow DAG Artifact Push"
         id: dag
-        if: needs.check-repo-state.outputs.archetype == 'airflow-dag-azure'
+        if: >-
+          needs.check-repo-state.outputs.archetype == 'airflow-dag-azure' ||
+          needs.check-repo-state.outputs.companion_kind == 'airflow-dag'
         uses: ./.github/actions/dag-artifact
         with:
           push: "true"
