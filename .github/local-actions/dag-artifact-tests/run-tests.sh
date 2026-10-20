@@ -88,5 +88,11 @@ grep -q 'application/vnd.osdu.airflow.dag.v1' \
 grep -q 'oras-project/setup-oras@22ce207df3b08e061f537244349aac6ae1d214f6' \
   "$HERE/../../actions/dag-artifact/action.yml" \
   || die "setup-oras is not pinned"
+grep -q 'cd "$ARTIFACT_PATH"' "$HERE/../../actions/dag-artifact/action.yml" \
+  || die "ORAS must publish root-level artifact names"
+if grep -q '"${ARTIFACT_PATH}/dag.zip:application/zip"' \
+    "$HERE/../../actions/dag-artifact/action.yml"; then
+  die "ORAS layer titles must not include the workspace path"
+fi
 
 echo "ok: DAG artifact contract"
