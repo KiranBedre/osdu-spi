@@ -49,7 +49,7 @@ Schema version 3 uses `java-maven-azure`. Schema version 4 also supports
 `node-typescript-azure`, `python-fastapi-azure`, `airflow-dag-azure`, and
 `native-container-azure`.
 
-`tests` is a map of suites. `acceptance` is required, and it's the suite the image runs when no other is selected. Suite names are lowercase slugs. Every suite has the same fields:
+`tests` is a map of suites. `acceptance` is required, and it's the suite the image runs when no other is selected. A fork whose suite isn't ready yet can declare `tests: {}`: the lane is then deploy only. It builds no acceptance image and mints no test callers, borrows the environment with the pushed image, waits for the rollout to verify and restores, and the summary reads "deploy only". Add `acceptance` when the suite can run. Suite names are lowercase slugs. Every suite has the same fields:
 
 | Field | Meaning |
 |---|---|

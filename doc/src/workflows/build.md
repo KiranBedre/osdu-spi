@@ -29,7 +29,7 @@ The run is green when the Maven build and tests pass, and red when compilation, 
 
 ### Supported Project Types
 - **Java/Maven only** - Detects Maven-based projects with `pom.xml` files
-- **Java 17 runtime** - Uses Temurin distribution for consistent builds
+- **Java release from the pom** - Temurin at the release the root pom declares (`maven.compiler.release`, then `java.version`, default 17); 17 and 25 are supported
 - **Community Maven repositories** - Supports GitLab-hosted OSDU dependencies
 - **Azure profile in protected-branch validation** - Builds `core,azure` by default, with `MAVEN_PROFILE` available for exceptional repository layouts
 
@@ -73,7 +73,7 @@ mvn test -Dtest=TestClassName#testMethodName
 ### Improve Coverage
 ```bash
 # Generate coverage report locally
-mvn clean test -P core,azure org.jacoco:jacoco-maven-plugin:0.8.11:report
+mvn clean test -P core,azure org.jacoco:jacoco-maven-plugin:0.8.14:report
 
 # View coverage report
 open target/site/jacoco/index.html
@@ -89,6 +89,16 @@ open target/site/jacoco/index.html
 Protected-branch validation and cascade builds pass `-P core,azure`. Maven disables an `activeByDefault` profile when any explicit profile is selected, so `core` must be included with `azure`. Set the optional `MAVEN_PROFILE` repository variable only when a service uses a different module layout.
 
 Sync PRs targeting the provider-less `fork_upstream` tree build `core` only. See [ADR-035](../adr/035-azure-only-maven-profile.md).
+
+### Build Environment
+
+Some upstream tests read an environment variable that upstream CI sets for every job, and a Maven property cannot stand in for it. The optional `BUILD_ENV` repository variable holds `KEY=VALUE` lines that every Maven build exports first: validation, the push build and its coverage job, Dependabot validation and the cascade's integration build, including core-only `fork_upstream` builds. In a value, `$GITHUB_WORKSPACE` becomes the checkout root and nothing else expands. Blank lines and lines starting with `#` are skipped.
+
+```text
+SIS_DATA=$GITHUB_WORKSPACE/apachesis_setup/SIS_DATA
+```
+
+A malformed line, or a name the runner or the build owns (`PATH`, `HOME`, `SHELL`, `ENV`, `BASH_ENV`, `CI`, `JAVA_HOME`, `M2_HOME`, `MAVEN_HOME`, `MAVEN_OPTS`, `MAVEN_PROFILE`, `GENERATE_COVERAGE`, `NODE_OPTIONS`, `LD_PRELOAD`, `LD_LIBRARY_PATH`, and anything starting with `GITHUB_`, `RUNNER_` or `ACTIONS_`), fails the build with an error naming the line. Unset, nothing is exported.
 
 ### Community Repository Access
 
@@ -107,6 +117,7 @@ When present, `.mvn/community-maven.settings.xml` supplies the OSDU dependency r
 |-------|----------|
 | "Dependencies not found" | Check pom.xml, clear cache |
 | "Azure module not built" | Verify `MAVEN_PROFILE`; the default is `core,azure` |
+| A test fails on a missing environment variable upstream CI sets | Add it to `BUILD_ENV` |
 | "Test flakiness" | Fix non-deterministic tests, add proper waits |
 | "Coverage calculation errors" | Verify test configuration, check exclusions |
 
